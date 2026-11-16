@@ -1,5 +1,13 @@
 # Historique
 
+## 3.2.1 — 16 novembre 2026
+
+- Espagnol par défaut dans le catalogue, les formulaires, confirmations, erreurs et le panneau Orion sur Vinted.
+- Drapeaux 🇪🇸 / 🇫🇷 tout en haut, choix mémorisé et partagé entre les deux origines via le stockage GM existant.
+- Bascule sans rechargement ni perte de saisie ; contenus des fiches protégés de la traduction.
+- Bouton photo localisé, contrôle natif de fichier masqué dans notre interface, dialogues iOS inchangés.
+- Tests ES/FR et de conservation des champs et photos ; corrections Vinted de 3.2.0 conservées.
+
 ## 3.2.0 — 16 novembre 2026
 
 - Sélection exacte de catégorie avec chemin hiérarchique, radio effectif, confirmation Fait et vérification de la valeur finale.

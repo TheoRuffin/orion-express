@@ -2,3 +2,6 @@
 
 .shell.mini{padding:6px 10px}.mini header small{display:none}.mini h1{font-size:18px;margin:0}.mini header{padding:0}.mini #minimize{min-height:44px}
 .prep-field{padding:16px 0;border-bottom:1px solid #cbd7cf}.check{display:flex;align-items:center;gap:12px;font-size:14px;line-height:1.5}.check input{width:24px;height:24px;flex-shrink:0;margin:0}.vinted-link{padding:14px 18px;border-radius:12px;text-decoration:none}#prep-summary{background:#e4ede4;padding:14px;border-radius:12px}#photo-zip{display:block}#resume-prep{margin-bottom:12px}
+
+.shell.mini>[data-orion-languages]{display:none!important}
+[hidden]{display:none!important}

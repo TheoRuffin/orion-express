@@ -5,6 +5,7 @@ host.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#f6f5
 const root = host.attachShadow({ mode: 'open' });
 root.innerHTML = `<style>${APP_CSS}</style><div class="shell"><header><div><small>VOTRE ATELIER DE VENTE · V3</small><h1>Orion <em>Express</em></h1></div><button id="minimize" aria-label="Réduire l’application">−</button></header><div class="origin">Local · example.com · aucune synchronisation</div><div id="status" role="status" aria-live="polite"></div><main></main><footer>Les données du navigateur ne sont pas une sauvegarde. Exportez vers Fichiers régulièrement.<br>Préparation manuelle des annonces : aucune connexion ni publication sur Vinted.</footer></div>`;
 document.body.append(host);
+attachOrionLanguage(root,root.querySelector('.shell'));
 const $ = s => root.querySelector(s);
 const main = $('main');
 let repo, products = [], selected, dirty = false, backupURL, busy = false;
@@ -12,7 +13,7 @@ const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const money = n => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(n);
 function status(message, bad = false) { $('#status').textContent = message; $('#status').className = bad ? 'error' : ''; }
 async function safe(action) { if (busy) return; busy = true; main.inert = true; main.setAttribute('aria-busy','true'); try { await action(); } catch(e) { status(errorMessage(e), true); } finally { busy = false; main.inert = false; main.removeAttribute('aria-busy'); } }
-function leave() { return !dirty || confirm('Quitter sans enregistrer les modifications ?'); }
+function leave() { return !dirty || orionConfirm('Quitter sans enregistrer les modifications ?'); }
 window.addEventListener('beforeunload', e => { if (dirty || busy) { e.preventDefault(); e.returnValue = ''; } });
 $('#minimize').onclick = () => {
   const minimized = host.style.height === '58px';
@@ -50,10 +51,10 @@ async function home() {
     cards.replaceChildren(); const query = $('#search').value.toLocaleLowerCase('fr');
     const matches = products.filter(p => [p.title,p.brand,p.category,p.description].join(' ').toLocaleLowerCase('fr').includes(query));
     if (!matches.length) cards.innerHTML = `<div class="empty"><h3>${products.length ? 'Aucun résultat' : 'Votre premier produit vous attend'}</h3><p>Créez une fiche ou retrouvez votre catalogue avec une sauvegarde.</p>${products.length ? '' : '<button id="starter">Créer « Jeu de cartes » à 10 €</button>'}</div>`;
-    if ($('#starter')) bind('#starter', async () => edit({ title:'Jeu de cartes', price:10, initialStock:1, photos:[], sales:[] }));
+    if ($('#starter')) bind('#starter', async () => edit({ title:orionLanguage==='es'?'Juego de cartas':'Jeu de cartes', price:10, initialStock:1, photos:[], sales:[] }));
     for (const p of matches) {
       const card = document.createElement('button'); card.className = 'card';
-      card.innerHTML = `<div class="thumb"></div><div><small>${esc(p.category || 'À classer')}</small><h3>${esc(p.title || 'Sans titre')}</h3><span>${money(p.price)} · ${remaining(p)} en stock</span></div><span aria-hidden="true">↗</span>`;
+      card.innerHTML = `<div class="thumb"></div><div><small ${p.category?'data-orion-user':''}>${esc(p.category || 'À classer')}</small><h3 ${p.title?'data-orion-user':''}>${esc(p.title || 'Sans titre')}</h3><span>${money(p.price)} · ${remaining(p)} en stock</span></div><span aria-hidden="true">↗</span>`;
       card.onclick = () => safe(async () => preview(p.id)); cards.append(card);
       if (p.photos.length) void renderPhotos(card.querySelector('.thumb'), [p.photos[0]]);
       else card.querySelector('.thumb').textContent = '✧';
@@ -80,7 +81,7 @@ async function home() {
     if (file.size > MAX_BACKUP) throw new Error('Sauvegarde supérieure à 100 Mo.');
     const records = await readBackup(await file.text());
     const photos = records.reduce((n,p) => n + p.photos.length,0);
-    if (!confirm(`Sauvegarde vérifiée : ${records.length} fiche(s), ${photos} photo(s). Restaurer comme nouvelles fiches ? Les fiches actuelles seront conservées. Des doublons sont possibles.`)) return;
+    if (!orionConfirm(`Sauvegarde vérifiée : ${records.length} fiche(s), ${photos} photo(s). Restaurer comme nouvelles fiches ? Les fiches actuelles seront conservées. Des doublons sont possibles.`)) return;
     const count = await repo.importCopies(records); await home(); status(`${count} fiche(s) restaurée(s). Originaux conservés.`);
   });
 }
@@ -88,10 +89,11 @@ async function edit(draft) {
   const p = draft ?? { title:'', price:0, initialStock:1, photos:[], sales:[] };
   const photos = structuredClone(p.photos); selected = p.id;
   const fields = [['title','Titre','text'],['price','Prix (€)','number'],['category','Catégorie','text'],['brand','Marque','text'],['condition','État','text'],['shipping','Format du colis','text'],['initialStock','Stock initial','number']];
-  main.innerHTML = `<button id="back">← Catalogue</button><h2>${p.id ? 'Modifier la fiche' : 'Nouveau produit'}</h2><form>${fields.map(([key,label,type]) => `<label>${label}<input name="${key}" type="${type}" value="${esc(p[key] ?? '')}" ${type === 'number' ? `min="0" step="${key === 'price' ? '0.01' : '1'}" required inputmode="${key === 'price' ? 'decimal' : 'numeric'}"` : ''} ${key === 'title' ? 'required maxlength="200"' : ''}></label>`).join('')}<label for="description">Description</label><textarea id="description" name="description" rows="6">${esc(p.description)}</textarea><h3>Photos · <span id="photo-count">${photos.length}</span></h3><div class="photos"></div><label class="file">＋ Ajouter des photos<input id="photos" type="file" accept="image/*" multiple></label><p class="hint">Jusqu’à 15 Mo par photo. HEIC peut être conservé sans être affichable sur tous les navigateurs. Remplacer agit seulement sur la photo choisie.</p><button class="primary save" type="submit">Enregistrer la fiche</button></form>`;
+  main.innerHTML = `<button id="back">← Catalogue</button><h2>${p.id ? 'Modifier la fiche' : 'Nouveau produit'}</h2><form>${fields.map(([key,label,type]) => `<label>${label}<input name="${key}" type="${type}" value="${esc(p[key] ?? '')}" ${type === 'number' ? `min="0" step="${key === 'price' ? '0.01' : '1'}" required inputmode="${key === 'price' ? 'decimal' : 'numeric'}"` : ''} ${key === 'title' ? 'required maxlength="200"' : ''}></label>`).join('')}<label for="description">Description</label><textarea id="description" name="description" rows="6">${esc(p.description)}</textarea><h3>Photos · <span id="photo-count">${photos.length}</span></h3><div class="photos"></div><button id="add-photos" type="button">＋ Ajouter des photos</button><input id="photos" type="file" accept="image/*" multiple hidden><p class="hint">Jusqu’à 15 Mo par photo. HEIC peut être conservé sans être affichable sur tous les navigateurs. Remplacer agit seulement sur la photo choisie.</p><button class="primary save" type="submit">Enregistrer la fiche</button></form>`;
   const changed = () => { dirty = true; $('#photo-count').textContent = photos.length; };
   await renderPhotos($('.photos'), photos, true, changed);
   $('form').oninput = () => { dirty = true; };
+  $('#add-photos').onclick = () => $('#photos').click();
   $('#photos').onchange = () => safe(async () => { const files = Array.from($('#photos').files); files.forEach(checkFile); photos.push(...files); changed(); await renderPhotos($('.photos'),photos,true,changed); $('#photos').value = ''; });
   bind('#back', async () => { if (leave()) await home(); });
   $('form').onsubmit = e => { e.preventDefault(); void safe(async () => {
@@ -110,15 +112,15 @@ async function copy(text) {
 async function preview(id) {
   const p = await repo.get(id); if (!p) throw new Error('Fiche introuvable.');
   selected = id;
-  main.innerHTML = `<button id="back">← Catalogue</button><article><small>APERÇU DE L’ANNONCE</small><h2>${esc(p.title)}</h2><div class="price">${money(p.price)}</div><div class="photos"></div><p class="description">${esc(p.description || 'Aucune description')}</p><dl>${[['Catégorie',p.category],['Marque',p.brand],['État',p.condition],['Colis',p.shipping],['Stock initial',p.initialStock],['Stock restant',remaining(p)]].map(([k,v])=>`<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl><button id="prepare-vinted" class="primary">Préparer sur Vinted</button><div class="toolbar"><button id="edit">Modifier</button><button id="duplicate">Dupliquer</button><button id="copy">Copier l’annonce</button><button id="copy-title">Copier le titre</button><button id="copy-description">Copier la description</button></div><textarea id="copy-fallback" hidden aria-label="Texte à copier" rows="8"></textarea><h3>Photos à joindre manuellement</h3><div id="photo-downloads" class="toolbar"></div><h3>Enregistrer une vente</h3><form id="sale"><label>Quantité<input name="quantity" type="number" value="1" min="1" max="${remaining(p)}" step="1" required inputmode="numeric"></label><label>Prix unitaire (€)<input name="unitPrice" type="number" value="${p.price}" min="0" step="0.01" required inputmode="decimal"></label><button type="submit" ${remaining(p) === 0 ? 'disabled' : ''}>Confirmer la vente</button></form><h3>Historique des ventes</h3><ul class="sales">${p.sales.length ? p.sales.map(s=>`<li>${esc(new Date(s.date).toLocaleString('fr-FR'))} · ${s.quantity} × ${money(s.unitPrice)}</li>`).join('') : '<li>Aucune vente enregistrée.</li>'}</ul><button class="danger" id="delete">Supprimer cette fiche</button></article>`;
+  main.innerHTML = `<button id="back">← Catalogue</button><article><small>APERÇU DE L’ANNONCE</small><h2 data-orion-user>${esc(p.title)}</h2><div class="price">${money(p.price)}</div><div class="photos"></div><p class="description" ${p.description?'data-orion-user':''}>${esc(p.description || 'Aucune description')}</p><dl>${[['Catégorie',p.category],['Marque',p.brand],['État',p.condition],['Colis',p.shipping],['Stock initial',p.initialStock],['Stock restant',remaining(p)]].map(([k,v])=>`<div><dt>${k}</dt><dd data-orion-user>${esc(v)}</dd></div>`).join('')}</dl><button id="prepare-vinted" class="primary">Préparer sur Vinted</button><div class="toolbar"><button id="edit">Modifier</button><button id="duplicate">Dupliquer</button><button id="copy">Copier l’annonce</button><button id="copy-title">Copier le titre</button><button id="copy-description">Copier la description</button></div><textarea id="copy-fallback" hidden aria-label="Texte à copier" rows="8"></textarea><h3>Photos à joindre manuellement</h3><div id="photo-downloads" class="toolbar"></div><h3>Enregistrer une vente</h3><form id="sale"><label>Quantité<input name="quantity" type="number" value="1" min="1" max="${remaining(p)}" step="1" required inputmode="numeric"></label><label>Prix unitaire (€)<input name="unitPrice" type="number" value="${p.price}" min="0" step="0.01" required inputmode="decimal"></label><button type="submit" ${remaining(p) === 0 ? 'disabled' : ''}>Confirmer la vente</button></form><h3>Historique des ventes</h3><ul class="sales">${p.sales.length ? p.sales.map(s=>`<li>${esc(new Date(s.date).toLocaleString('fr-FR'))} · ${s.quantity} × ${money(s.unitPrice)}</li>`).join('') : '<li>Aucune vente enregistrée.</li>'}</ul><button class="danger" id="delete">Supprimer cette fiche</button></article>`;
   await renderPhotos($('.photos'),p.photos);
   for (let i=0; i<p.photos.length; i++) {
     try { const a = document.createElement('a'); a.href = await photoURL(p.photos[i]); a.download = `photo-${i+1}`; a.textContent = `Photo ${i+1} ↗`; $('#photo-downloads').append(a); } catch { /* original retained */ }
   }
   bind('#prepare-vinted', async () => launchVintedTest(p));
   bind('#back', home); bind('#edit',async () => edit(p)); bind('#duplicate', async () => { const d = await repo.duplicate(id); await preview(d.id); status('Copie créée, historique des ventes réinitialisé.'); });
-  bind('#copy',async () => copy(listing(p))); bind('#copy-title',async () => copy(p.title)); bind('#copy-description',async () => copy(p.description));
-  bind('#delete', async () => { if (confirm('Supprimer définitivement cette fiche et ses photos ? Exportez une sauvegarde avant de continuer.')) { await repo.remove(id); await home(); status('Fiche supprimée.'); } });
+  bind('#copy',async () => copy(listingForOrion(p))); bind('#copy-title',async () => copy(p.title)); bind('#copy-description',async () => copy(p.description));
+  bind('#delete', async () => { if (orionConfirm('Supprimer définitivement cette fiche et ses photos ? Exportez une sauvegarde avant de continuer.')) { await repo.remove(id); await home(); status('Fiche supprimée.'); } });
   $('#sale').onsubmit = e => { e.preventDefault(); void safe(async () => { const data = new FormData($('#sale')); await repo.sell(id,Number(data.get('quantity')),Number(data.get('unitPrice'))); await preview(id); status('Vente enregistrée, stock mis à jour.'); }); };
 }
 void safe(async () => { repo = new Products(await openDB()); await home(); status('Catalogue chargé. Avant la première modification V1, exportez une sauvegarde.'); });

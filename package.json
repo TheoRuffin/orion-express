@@ -1,0 +1,7 @@
+{
+  "name": "orion-express", "version": "2.0.0", "private": true, "type": "module",
+  "description": "Gestion locale de produits pour Orion et Violentmonkey",
+  "scripts": { "build": "node scripts/build.mjs", "test": "node --test tests/core.test.mjs", "test:mobile": "playwright test", "check": "npm run build && npm test && npm run test:mobile" },
+  "devDependencies": { "fake-indexeddb": "6.2.8", "@playwright/test": "1.65.1" },
+  "engines": { "node": ">=22" }
+}

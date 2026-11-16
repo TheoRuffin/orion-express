@@ -1,4 +1,4 @@
-# Audit et périmètre V3 — 16 novembre 2026
+# Audit historique — périmètre de la version 3.0.0 — 16 novembre 2026
 
 ## Dépôt et non-régression
 

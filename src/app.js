@@ -115,7 +115,7 @@ async function preview(id) {
   for (let i=0; i<p.photos.length; i++) {
     try { const a = document.createElement('a'); a.href = await photoURL(p.photos[i]); a.download = `photo-${i+1}`; a.textContent = `Photo ${i+1} ↗`; $('#photo-downloads').append(a); } catch { /* original retained */ }
   }
-  bind('#prepare-vinted', async () => startPreparation(p));
+  bind('#prepare-vinted', async () => launchVintedTest(p));
   bind('#back', home); bind('#edit',async () => edit(p)); bind('#duplicate', async () => { const d = await repo.duplicate(id); await preview(d.id); status('Copie créée, historique des ventes réinitialisé.'); });
   bind('#copy',async () => copy(listing(p))); bind('#copy-title',async () => copy(p.title)); bind('#copy-description',async () => copy(p.description));
   bind('#delete', async () => { if (confirm('Supprimer définitivement cette fiche et ses photos ? Exportez une sauvegarde avant de continuer.')) { await repo.remove(id); await home(); status('Fiche supprimée.'); } });

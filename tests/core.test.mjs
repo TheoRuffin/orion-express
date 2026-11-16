@@ -109,7 +109,7 @@ test('métadonnées stables et build reproductible octet pour octet',async () =>
   assert.match(meta,/@match https:\/\/example.com\/\*/); const pkg=JSON.parse(await readFile('package.json','utf8')); assert.ok(meta.includes(`// @version ${pkg.version}\n`));
   assert.match(meta,/@updateURL https:\/\/raw.githubusercontent.com\/TheoRuffin\/orion-express\/main\/orion-express.meta.js/);
   assert.doesNotMatch(after,/@require|\beval\(|\bfetch\(|XMLHttpRequest/);
-  assert.doesNotMatch(meta,/@match .*vinted/); // no third-party tool injected into Vinted
+  assert.match(meta,/@match https:\/\/www\.vinted\.es\/items\/new\*/);
   assert.match(after,/https:\/\/www\.vinted\.es\/items\/new/);
   execFileSync(process.execPath,['--check','orion-express.user.js']);
 });

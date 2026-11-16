@@ -1,5 +1,13 @@
 # Historique
 
+## 3.1.0 — 16 novembre 2026
+
+- Préremplissage expérimental ciblant le vrai formulaire vinted.es, avec transfert local GM entre origines.
+- Tentative des textes, catégorie, marque, état, colis et FileList des photos ; aucune publication ni sauvegarde de brouillon automatique.
+- Verrou anti-répétition entre onglets, reprise sans photos, refus des valeurs ambiguës et secours manuel.
+- Nouvelles permissions GM et correspondance limitée au formulaire Vinted ; stockage produits inchangé.
+- Validation sur formulaires contrôlés, pas de validation iPhone ou de téléversement réel Vinted. Pas d’autorisation officielle obtenue.
+
 ## 3.0.0 — 16 novembre 2026
 
 - Bouton Préparer sur Vinted et ouverture du véritable formulaire Espagne.

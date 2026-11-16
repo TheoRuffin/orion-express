@@ -1,12 +1,15 @@
 // ==UserScript==
 // @name Orion Express
 // @namespace https://github.com/TheoRuffin/orion-express
-// @version 3.0.0
-// @description Produits, photos, stock, sauvegardes et préparation manuelle pour Vinted Espagne.
+// @version 3.1.0
+// @description Catalogue local et préremplissage expérimental Vinted Espagne, sans publication.
 // @match https://example.com/*
 // @run-at document-end
 // @noframes
-// @grant none
+// @match https://www.vinted.es/items/new*
+// @grant GM_getValue
+// @grant GM_setValue
+// @grant GM_deleteValue
 // @inject-into auto
 // @updateURL https://raw.githubusercontent.com/TheoRuffin/orion-express/main/orion-express.meta.js
 // @downloadURL https://raw.githubusercontent.com/TheoRuffin/orion-express/main/orion-express.user.js
@@ -264,7 +267,134 @@ async function photoArchive(files, fields) {
   return new File([...chunks,...central,end],'orion-vinted-photos.zip',{type:'application/zip'});
 }
 
+// Experimental, user-triggered DOM adapter. Never submits or saves a listing.
+const TRANSFER_KEY='orion-express-transfer-3.1';
+const hasBridge=()=>typeof GM_getValue==='function' && typeof GM_setValue==='function';
+async function stageTransfer(product) {
+  const p=normalize(product); prepareProduct(p); // same completeness and stock validation
+  const snapshot={...p,legacyV1:undefined};
+  const backup=await exportBackup([snapshot]);
+  if(new Blob([backup]).size>40*1024*1024)throw new Error('Transfert supérieur à 40 Mo. Utilisez le partage manuel des photos.');
+  const transfer={version:1,nonce:uid(),createdAt:Date.now(),backup};
+  await GM_setValue(TRANSFER_KEY,JSON.stringify(transfer));
+  const saved=await GM_getValue(TRANSFER_KEY,'');
+  if(saved!==JSON.stringify(transfer))throw new Error('Transfert local non confirmé. Réessayez ou utilisez la préparation manuelle.');
+  return transfer;
+}
+async function readTransfer() {
+  const raw=await GM_getValue(TRANSFER_KEY,'');if(!raw)throw new Error('Aucun produit transmis. Revenez à Orion Express et préparez une fiche.');
+  const t=JSON.parse(raw);
+  if(t.version!==1 || !t.nonce || Date.now()-t.createdAt>24*60*60*1000)throw new Error('Transfert expiré : préparez de nouveau la fiche dans Orion Express.');
+  const products=await readBackup(t.backup);if(products.length!==1)throw new Error('Transfert invalide.');
+  return {transfer:t,product:normalize(products[0])};
+}
+function setNativeValue(input,value) {
+  if(!input || input.disabled || input.readOnly)throw new Error('Champ absent ou non modifiable.');
+  const proto=input.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;
+  const setter=Object.getOwnPropertyDescriptor(proto,'value')?.set;
+  if(!setter)throw new Error('Type de champ non pris en charge.');
+  setter.call(input,String(value));input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.blur();
+}
+function transferFiles(input,files) {
+  if(!input || input.type!=='file' || input.disabled || (!input.multiple && files.length>1))throw new Error('Sélecteur photo absent ou incompatible.');
+  if(input.files.length)throw new Error('Des photos sont déjà présentes. Aucun remplacement automatique.');
+  const dt=new DataTransfer();for(const file of files)dt.items.add(file);
+  input.files=dt.files;
+  if(input.files.length!==files.length)throw new Error('Le navigateur refuse le transfert des photos.');
+  input.dispatchEvent(new Event('change',{bubbles:true}));input.dispatchEvent(new Event('input',{bubbles:true}));
+}
+const visible=e=>!!e && !!(e.getClientRects().length) && !e.disabled;
+function uniqueField(doc,id,tag='INPUT') {
+  const list=[...doc.querySelectorAll(`[id="${id}"]`)].filter(e=>e.tagName===tag && visible(e));
+  if(list.length!==1)throw new Error(`Champ ${id} introuvable ou ambigu. Formulaire modifié ou non chargé.`);
+  return list[0];
+}
+async function waitFor(find,ms=2500) {
+  const end=Date.now()+ms;while(Date.now()<end){const result=find();if(result)return result;await new Promise(r=>setTimeout(r,100));}throw new Error('Composant Vinted non reconnu ou trop lent. Choisissez cette valeur manuellement.');
+}
+const fold=s=>String(s).normalize('NFD').replace(/\p{Diacritic}/gu,'').trim().toLowerCase();
+async function selectVintedChoice(doc,id,value) {
+  if(!value)throw new Error('Valeur manquante dans la fiche.');
+  const triggers=[...doc.querySelectorAll(`[id="${id}"]`)].filter(visible);
+  if(triggers.length!==1)throw new Error(`Sélecteur ${id} absent ou ambigu.`);
+  const trigger=triggers[0];
+  const target=value.split('>').at(-1).trim();
+  if(fold(trigger.textContent)===fold(value) || fold(trigger.value??'')===fold(value))return;
+  trigger.click();
+  try{
+    const search=await waitFor(()=>{
+      if(id==='category')return [...doc.querySelectorAll('#catalog-search-input')].find(visible);
+      const owned=doc.getElementById(trigger.getAttribute('aria-controls') || '');
+      const popup=owned || [...doc.querySelectorAll('[role=dialog],[role=listbox],[data-radix-popper-content-wrapper]')].filter(visible).at(-1);
+      return popup && [...popup.querySelectorAll('input')].find(e=>visible(e) && /search/i.test(e.id+e.getAttribute('placeholder')));
+    },700).catch(()=>null);
+    if(search)setNativeValue(search,value.split('>').at(-1).trim());
+    const option=await waitFor(()=>{
+      const nodes=[...doc.querySelectorAll('[role="option"],[role="radio"],button[id^="catalog-"],button[id^="brand-"],[data-testid*="condition"]')].filter(visible);
+      const matches=nodes.filter(e=>fold(e.textContent)===fold(target) || [...e.children].some(c=>fold(c.textContent)===fold(target)));
+      return matches.length===1?matches[0]:null;
+    });option.click();
+  }catch(e){doc.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));throw e;}
+}
+async function applyVintedProduct(doc,product,report,{photos=true}={}) {
+  const hadContent=['title','description'].some(id=>String(doc.getElementById(id)?.value || '').trim());
+  const results={};const attempt=async(key,fn)=>{try{await fn();results[key]='À vérifier dans Vinted';}catch(e){results[key]='Manuel : '+errorMessage(e);}report({...results});};
+  // Text first: no submit, no buttons selected by generic text such as "Ajouter".
+  for(const key of ['title','description','price'])await attempt(key,async()=>{
+    const el=uniqueField(doc,key,key==='description'?'TEXTAREA':'INPUT');
+    const value=key==='price'?product.price.toFixed(2).replace('.',','):product[key];
+    if(el.value && el.value!==String(value) && !(key==='price' && Number(el.value.replace('€','').replace(',','.').trim())===0))throw new Error('Ce champ contient déjà une autre valeur ; aucun écrasement.');
+    setNativeValue(el,value);if(el.value!==String(value))throw new Error('Valeur non conservée par le formulaire.');
+  });
+  await attempt('category',()=>selectVintedChoice(doc,'category',product.category));
+  for(const key of ['brand','condition'])await attempt(key,()=>{if(results.category?.startsWith('Manuel'))throw new Error('Choisissez la catégorie avant ce champ.');return selectVintedChoice(doc,key,product[key]);});
+  await attempt('shipping',async()=>{
+    const aliases={petit:1,pequeno:1,small:1,moyen:2,mediano:2,medium:2,grand:3,grande:3,large:3};const size=aliases[fold(product.shipping)];
+    if(!size)throw new Error('Format du colis non reconnu.');
+    const radios=[...doc.querySelectorAll('[id^="package_type_selector_"]')].filter(visible);const checked=radios.find(e=>e.checked);
+    // Product selection explicitly requests this parcel size, including replacing a suggested default.
+    if(checked?.id===`package_type_selector_${size}`)return;
+    const radio=doc.getElementById(`package_type_selector_${size}`);if(!visible(radio))throw new Error('Choix du colis non reconnu.');radio.click();
+  });
+  if(photos)await attempt('photos',async()=>{
+    if(hadContent)throw new Error('Le formulaire contenait déjà du texte : ajout automatique de photos désactivé pour éviter les doublons.');
+    const inputs=[...doc.querySelectorAll('input[type=file]')].filter(e=>!e.disabled && e.multiple);
+    if(inputs.length!==1)throw new Error('Sélecteur photo absent ou ambigu.');
+    const files=await preparedFiles({photos:product.photos});transferFiles(inputs[0],files);
+    results.photos='Fichiers transmis au sélecteur ; téléversement à vérifier';
+  });
+  // Additional category attributes have no mapping in V1/V2: never guess them.
+  results.dynamic='Manuel : vérifiez tous les champs supplémentaires de la catégorie';report({...results});return results;
+}
+
 const APP_CSS = ":host{all:initial;font:16px -apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;color:#172b35}*{box-sizing:border-box}.shell{height:100%;overflow:auto;background:#f6f5ef;padding:24px max(20px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));-webkit-overflow-scrolling:touch}header,header>div,.toolbar,.stats,.card,dl>div{display:flex;align-items:center}header{justify-content:space-between;max-width:900px;margin:auto}header>div{display:block}small{font-size:10px;letter-spacing:.14em;font-weight:700;color:#55716f}h1{font-size:28px;letter-spacing:-1px;margin:5px 0 12px}h1 em{font-family:Georgia,serif;font-weight:400;color:#087b67}h2{font-size:30px;line-height:1.12;letter-spacing:-.8px;margin:14px 0 22px}h3{font-size:18px;margin:10px 0}p{line-height:1.6}button,a,input,textarea{font:inherit}button,a{touch-action:manipulation}button{min-height:46px;padding:11px 16px;border:1px solid #cbd7cf;background:#fff;color:#172b35;border-radius:12px;font-weight:600;cursor:pointer}button:disabled{opacity:.5;cursor:default}button:focus-visible,input:focus-visible,textarea:focus-visible,a:focus-visible{outline:3px solid #dc9a2b;outline-offset:3px}.primary{background:#087b67;border-color:#087b67;color:white}.origin{font-size:11px;max-width:900px;margin:8px auto 14px;color:#55716f}.hero{padding:28px;border-radius:22px;background:#e4ede4;margin-bottom:18px}.stats{gap:24px;margin-bottom:24px;font-size:13px}.stats b{display:block;font-size:27px}.toolbar{gap:8px;flex-wrap:wrap;margin:16px 0}.toolbar button{flex:1}.search{margin:24px 0 16px}label{display:block;font-weight:600;font-size:13px;margin:18px 0 8px}input,textarea{display:block;width:100%;margin-top:8px;padding:14px;border:1px solid #bdcbc3;border-radius:12px;background:white;color:#172b35;font-size:16px}textarea{resize:vertical}main,footer,#status{max-width:900px;margin:auto}.cards{display:grid;gap:12px}.card{width:100%;text-align:left;gap:16px;padding:14px}.card>div:nth-child(2){flex:1;min-width:0;overflow-wrap:anywhere}.card h3{font-size:18px;margin:5px 0}.card span{font-weight:400;font-size:13px}.thumb{width:64px;height:76px;flex-shrink:0;border-radius:10px;background:#eeeade;overflow:hidden;display:grid;place-items:center;font-size:30px}.thumb .photo,.thumb img{width:100%;height:76px;object-fit:cover}.thumb p{font-size:10px}.photo{border-radius:12px;overflow:hidden;background:#eeeade;min-width:0}.photo img{width:100%;height:180px;object-fit:contain;display:block}.photo button{font-size:12px;padding:8px;min-height:44px}.photo p{padding:12px;font-size:12px}.photos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0}.hint,footer,.tip{font-size:12px;color:#55716f}.tip{border-top:1px solid #cbd7cf;margin-top:30px;padding-top:20px}.tip b{font-size:14px}.empty{padding:30px 18px;text-align:center;border:1px dashed #bdcbc3;border-radius:18px}.file{background:#e4ede4;border-radius:12px;padding:14px}.file input{font-size:13px;padding:8px}.save{position:sticky;bottom:8px;width:100%;margin-top:18px;box-shadow:0 5px 20px #172b3522}.price{font-size:28px;color:#087b67;font-weight:700}.description{white-space:pre-wrap;overflow-wrap:anywhere}dl>div{justify-content:space-between;border-bottom:1px solid #dce3dc;padding:12px 0;gap:12px}dt{font-size:13px;color:#55716f}dd{margin:0;overflow-wrap:anywhere;text-align:right}.danger{color:#a33030;border-color:#debcbc;margin:24px 0}.sales{padding-left:20px;line-height:1.8;font-size:13px}a{color:#087b67;display:inline-block;min-height:44px;padding:12px 0;overflow-wrap:anywhere}#status{font-size:13px;line-height:1.5;padding:10px 0;color:#087b67}#status.error{color:#a33030}footer{padding:28px 0 10px;line-height:1.7}article{padding-top:20px}#sale{display:flex;gap:10px;flex-wrap:wrap;align-items:end}#sale label{flex:1;min-width:100px}#sale button{margin-bottom:8px}@media(min-width:700px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{padding:40px}.hero h2{max-width:420px;font-size:44px}.photos{grid-template-columns:repeat(3,minmax(0,1fr))}form:not(#sale){max-width:650px}header{padding-top:12px}}@media(prefers-reduced-motion:no-preference){button{transition:background .15s}button:hover{filter:brightness(.97)}}\n\n.shell.mini{padding:6px 10px}.mini header small{display:none}.mini h1{font-size:18px;margin:0}.mini header{padding:0}.mini #minimize{min-height:44px}\n.prep-field{padding:16px 0;border-bottom:1px solid #cbd7cf}.check{display:flex;align-items:center;gap:12px;font-size:14px;line-height:1.5}.check input{width:24px;height:24px;flex-shrink:0;margin:0}.vinted-link{padding:14px 18px;border-radius:12px;text-decoration:none}#prep-summary{background:#e4ede4;padding:14px;border-radius:12px}#photo-zip{display:block}#resume-prep{margin-bottom:12px}\n";
+async function launchVintedTest(product) {
+  if(!hasBridge()){await startPreparation(product);status('Transfert extension indisponible : préparation manuelle ouverte.');return;}
+  const t=await stageTransfer(product);
+  main.innerHTML=`<button id="test-back">← Retour à la fiche</button><h2>Transfert prêt</h2><p>Produit et photos enregistrés dans le stockage de Violentmonkey ; transfert valable 24 heures. Aucun serveur de transfert.</p><a class="primary vinted-link" href="https://www.vinted.es/items/new#orion=${encodeURIComponent(t.nonce)}" target="_blank" rel="noopener noreferrer">Ouvrir Vinted et préremplir (test) ↗</a><p>Expérimental : contrôlez tous les champs et les images. Le script ne publie ni ne sauvegarde de brouillon. Les valeurs supplémentaires inconnues restent manuelles.</p><button id="manual-prep">Utiliser la préparation manuelle</button>`;
+  bind('#test-back',()=>preview(product.id));bind('#manual-prep',()=>startPreparation(product));
+}
+async function initVintedAssistant(){
+  const host=document.createElement('div');host.id='orion-vinted-test';host.style.cssText='position:fixed;right:8px;bottom:8px;z-index:2147483646;max-width:calc(100vw - 16px);width:360px';
+  const root=host.attachShadow({mode:'open'});root.innerHTML=`<style>:host{font:15px -apple-system,sans-serif;color:#172b35}*{box-sizing:border-box}section{padding:14px;background:#f6f5ef;border:2px solid #087b67;border-radius:14px;max-height:55vh;overflow:auto}button,a{font:inherit;display:inline-block;padding:12px;min-height:44px;margin:4px;border-radius:9px;border:1px solid #087b67;background:white;color:#087b67}p,li{line-height:1.4}ul{padding-left:18px}textarea{width:100%;font-size:16px}</style><section><button id="toggle">Réduire</button><div id="body"><b>Orion Express · préremplissage expérimental</b><p id="status" role="status">Chargement du transfert local…</p><button id="fill" disabled>Préremplir une seule fois</button><button id="retry" disabled>Réessayer les textes et choix (sans photos)</button><ul id="result"></ul><p>Aucune publication ni sauvegarde de brouillon automatique. La présence dans un champ ne confirme pas sa validation par Vinted. Vérifiez les photos et les champs dépendants après chaque changement de catégorie.</p><a href="https://example.com/" target="_blank" rel="noopener">Retour au catalogue</a><button id="clear">Effacer le transfert local</button></div></section>`;document.body.append(host);
+  const $=s=>root.querySelector(s);let busy=false,used=false,product,transfer;
+  $('#toggle').onclick=()=>{const body=$('#body');body.hidden=!body.hidden;$('#toggle').textContent=body.hidden?'Ouvrir Orion':'Réduire';};
+  const run=async(fn)=>{if(busy)return;busy=true;$('#fill').disabled=true;$('#retry').disabled=true;try{await fn();}catch(e){$('#status').textContent=errorMessage(e);}finally{busy=false;$('#fill').disabled=used||!product;$('#retry').disabled=!used||!product;}};
+  const perform=async(photos)=>{
+    if(location.pathname!=='/items/new')throw new Error('Ouvrez le formulaire de création Vinted.');
+    if(!navigator.onLine)throw new Error('Connexion indisponible. Aucun transfert lancé.');
+    uniqueField(document,'title');uniqueField(document,'description','TEXTAREA');
+    if(photos){const lock=await GM_getValue(TRANSFER_KEY+'-used','');if(lock===transfer.nonce){used=true;throw new Error('Ce transfert a déjà été tenté. Reprenez les textes sans photos ou préparez de nouveau la fiche.');}await GM_setValue(TRANSFER_KEY+'-used',transfer.nonce);used=true;}
+    const draw=results=>{$('#result').replaceChildren();for(const [k,v]of Object.entries(results)){const li=document.createElement('li');li.textContent=`${Object.fromEntries(PREP_FIELDS)[k] || ({photos:'Photos',dynamic:'Champs supplémentaires'})[k] || k} : ${v}`;$('#result').append(li);}};
+    await applyVintedProduct(document,product,draw,{photos});$('#status').textContent='Tentative terminée. Vérifiez chaque champ et chaque miniature native Vinted. Rien n’a été publié.';
+  };
+  const fill=async photos=>{if(!navigator.locks?.request)throw new Error('Verrou de sécurité indisponible dans ce navigateur. Utilisez la préparation manuelle.');return navigator.locks.request('orion-express-fill',()=>perform(photos));};
+  $('#fill').onclick=()=>run(()=>fill(true));$('#retry').onclick=()=>run(()=>fill(false));
+  $('#clear').onclick=()=>run(async()=>{await GM_deleteValue(TRANSFER_KEY);product=null;$('#status').textContent='Transfert local effacé. Catalogue conservé.';});
+  await run(async()=>{({transfer,product}=await readTransfer());const expected=new URLSearchParams(location.hash.slice(1)).get('orion');if(expected && expected!==transfer.nonce)throw new Error('Ce lien correspond à un autre transfert. Préparez de nouveau la fiche.');$('#status').textContent=`Prêt : ${product.title}, ${product.photos.length} photo(s). Lancez le test lorsque le formulaire est chargé.`;if(expected){await waitFor(()=>visible(document.getElementById('title')),12000);await fill(true);}});
+}
+
+if(location.hostname === 'www.vinted.es'){void initVintedAssistant();return;}
 if (document.getElementById('orion-express-v2')) return;
 const host = document.createElement('div');
 host.id = 'orion-express-v2';
@@ -382,7 +512,7 @@ async function preview(id) {
   for (let i=0; i<p.photos.length; i++) {
     try { const a = document.createElement('a'); a.href = await photoURL(p.photos[i]); a.download = `photo-${i+1}`; a.textContent = `Photo ${i+1} ↗`; $('#photo-downloads').append(a); } catch { /* original retained */ }
   }
-  bind('#prepare-vinted', async () => startPreparation(p));
+  bind('#prepare-vinted', async () => launchVintedTest(p));
   bind('#back', home); bind('#edit',async () => edit(p)); bind('#duplicate', async () => { const d = await repo.duplicate(id); await preview(d.id); status('Copie créée, historique des ventes réinitialisé.'); });
   bind('#copy',async () => copy(listing(p))); bind('#copy-title',async () => copy(p.title)); bind('#copy-description',async () => copy(p.description));
   bind('#delete', async () => { if (confirm('Supprimer définitivement cette fiche et ses photos ? Exportez une sauvegarde avant de continuer.')) { await repo.remove(id); await home(); status('Fiche supprimée.'); } });

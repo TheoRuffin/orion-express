@@ -1,28 +1,37 @@
-# Orion Express V3
+# Orion Express V3.1
 
-Gestion locale de fiches produits dans **Orion sur iPhone**, distribuée sous forme de userscript Violentmonkey. Version **3.0.0**, interface française, sans serveur applicatif, sans compte supplémentaire et sans dépendance distante au lancement.
+Gestion locale de fiches produits dans **Orion sur iPhone**, distribuée sous forme de userscript Violentmonkey. Version **3.1.0**, interface française, sans serveur applicatif, sans compte supplémentaire et sans dépendance distante au lancement.
 
 [Installer le userscript](https://raw.githubusercontent.com/TheoRuffin/orion-express/main/orion-express.user.js) · [Code source](https://github.com/TheoRuffin/orion-express) · [Versions](https://github.com/TheoRuffin/orion-express/releases)
 
-## V3 : préparer une annonce pour le véritable Vinted Espagne
+## V3.1 : préremplissage expérimental sur vinted.es
 
-**Le transfert automatique n’est pas livré** : les [conditions de Vinted](https://www.vinted.es/terms-and-conditions) restreignent les outils logiciels tiers sans autorisation. La V3 ajoute à l’application existante un assistant local de préparation qui ouvre [le vrai formulaire](https://www.vinted.es/items/new). Aucun script ne tourne sur Vinted, aucune photo n’est envoyée automatiquement. [Audit, observations réelles et limites](docs/V3-AUDIT.md).
+À la demande de l’utilisateur, cette version ajoute un test de préremplissage par le DOM. **Aucune autorisation officielle de Vinted n’a été obtenue.** Le test sans publication ne constitue pas une telle autorisation ; les restrictions des [conditions Vinted](https://www.vinted.es/terms-and-conditions) restent applicables. Il ne s’agit pas d’une intégration partenaire.
 
-1. Dans le catalogue, choisissez une fiche complète (titre, description, prix positif, photo et stock).
-2. Appuyez sur **Préparer sur Vinted**. Le produit reste intact ; un snapshot de travail est enregistré dans une base distincte, sur example.com.
-3. Partagez **toutes les photos ensemble** vers Photos/Fichiers si le partage iOS le propose. Sinon téléchargez le ZIP, décompressez-le dans Fichiers et retrouvez toutes les images dans un dossier ; le ZIP contient également `annonce.txt`. Limite de préparation : 40 Mo d’images, sans recompression. HEIC peut être refusé par la cible : convertissez alors une copie manuellement.
-4. Ouvrez **le vrai formulaire Vinted** et connectez-vous si nécessaire. Dans son sélecteur natif, choisissez les photos du dossier ou de la photothèque. Un ZIP ne doit pas être envoyé comme photo.
-5. Revenez à l’onglet Orion Express pour copier chaque valeur, puis collez-la dans Vinted. Choisissez catégorie, marque, état et colis dans les listes natives. Les libellés français et espagnols sont affichés pour vous aider ; les textes du produit ne sont pas traduits automatiquement.
-6. Cochez les informations uniquement après les avoir vérifiées dans Vinted. Après un changement de catégorie, utilisez **J’ai changé de catégorie** pour remettre à zéro les vérifications dépendantes. Les coches sont déclaratives ; aucune lecture du formulaire.
-7. Relisez et publiez exclusivement depuis Vinted. L’assistant n’annonce jamais une publication et ne diminue pas le stock. Revenez au catalogue pour enregistrer une vente réelle.
+### Sur l’iPhone
 
-**Trois actions ouvrent le formulaire depuis le catalogue**, mais le remplir demande ensuite les manipulations ci-dessus. Une annonce complète en trois actions n’est pas atteinte. La préparation se reprend avec **Reprendre ma préparation Vinted**, même après rechargement ; attendez le message de vérification enregistrée avant de fermer. Une interruption avant validation d’une écriture peut perdre la dernière coche, sans modifier les produits. Une préparation est un instantané : préparez de nouveau après une modification de fiche. Les photos du snapshot occupent du stockage supplémentaire, jusqu’à effacement de la préparation ; elles ne sont pas incluses séparément dans l’export du catalogue. Effacer la préparation ne supprime pas les produits.
+1. Exportez votre catalogue vers Fichiers, puis recherchez les mises à jour dans Violentmonkey. Acceptez les nouvelles permissions du même script : stockage GM et exécution uniquement sur `https://www.vinted.es/items/new*`. Version attendue **3.1.0**. Rechargez example.com sans effacer ses données.
+2. Sélectionnez une fiche complète puis **Préparer sur Vinted**. Appuyez sur **Ouvrir Vinted et préremplir (test)**. Le formulaire doit être vide ; connectez-vous si nécessaire. Si le catalogue paraît vide après la mise à jour, ne supprimez ni ne réimportez rien : vérifiez l’origine/profil et revenez à la version 3.0.0 pour diagnostiquer. Après connexion, si le fragment du lien a disparu, le panneau permet de lancer **Préremplir une seule fois** manuellement.
+3. Le module tente automatiquement les champs reconnus et les photos lorsque le lien contient le bon identifiant de transfert. Contrôlez les valeurs et surtout **les miniatures natives Vinted**, leur nombre et leur ordre. Une FileList remplie ne prouve pas l’acceptation des images par Vinted. Aucune action n’est effectuée sur Publier/Ajouter ou Sauvegarder le brouillon.
 
-Le formulaire Espagne connecté a été observé dans Chrome (interface en français) ; les photos n’y ont pas été envoyées et aucun brouillon n’a été sauvegardé. **Le partage et le parcours complet V3 sur Orion iPhone restent NON VALIDÉS.** Les tests automatisés utilisent un formulaire contrôlé et ne prouvent pas une autorisation ou une intégration réelle de Vinted.
+Trois actions depuis le catalogue ouvrent et lancent la tentative (hors connexion, installation et contrôles). Si un champ affiche **Manuel**, le composant ou la valeur n’a pas été reconnu : sélectionnez-le dans Vinted. Les champs supplémentaires de catégorie ne sont pas devinés : leur modèle n’existe pas dans les fiches V1/V2. Après changement de catégorie, relisez les champs dépendants. Les valeurs de texte déjà différentes sont conservées ; le colis demandé peut remplacer la suggestion par défaut.
 
-### Mettre à jour depuis V2
+Les photos sont transmises en fichiers, sans recompression, dans leur ordre d’origine. Un formulaire contenant déjà du titre ou de la description ne reçoit pas de photos automatiquement, pour éviter les doublons. Une seule tentative photo est autorisée par transfert, y compris après interruption ou rechargement ; un verrou navigateur sérialise les tentatives entre onglets. Un transfert déjà tenté peut reprendre **les textes et choix sans photos**. Pour une nouvelle tentative photo après échec, revenez au catalogue et préparez de nouveau, sur un formulaire vide. Aucun résultat n’est déclaré « publié » ou « accepté par Vinted ».
 
-Exportez votre catalogue vers Fichiers, ouvrez Violentmonkey et lancez **Rechercher des mises à jour** pour Orion Express. La version affichée doit devenir **3.0.0**. Rechargez ensuite example.com. Si la recherche tarde, ouvrez le lien d’installation en haut de ce document et acceptez la mise à jour de la même identité de script. Ne désinstallez pas le script et n’effacez pas les données du site. Aucune permission supplémentaire, aucun changement de base produits, URL de mise à jour inchangées. Les anciennes versions restent disponibles dans les releases.
+### Stockage, reprise et secours
+
+La base produits et le code `src/core.js` restent inchangés. Le pont est une copie JSON vérifiée dans le stockage **local de l’extension Violentmonkey**, qui traverse les origines sans accès direct à IndexedDB Vinted. Aucun serveur de transfert ni URL contenant les photos. Le script ne configure aucun service de synchronisation : désactivez toute synchronisation cloud de l’extension avant le test si vous en utilisez une. Le transfert est valide 24 heures, reste stocké jusqu’à remplacement/effacement, et peut être effacé depuis le panneau Vinted. Limite 40 Mo au format sérialisé. Le stock ne diminue pas ; aucune vente n’est enregistrée.
+
+Si le pont, le verrou ou l’injection iOS échoue, utilisez **Utiliser la préparation manuelle** : partage de toutes les photos, ZIP, fichiers individuels, copie de chaque valeur et contrôles reprenables. Le catalogue conserve aussi **Reprendre ma préparation Vinted** pour ce mode de secours. Un ZIP doit être décompressé dans Fichiers avant de choisir ses images dans Vinted. Aucun nombre de gestes iOS exact n’est validé pour ce secours : il dépend des cibles de partage et des dialogues natifs ; il ne se réduit pas à trois gestes.
+
+### Validation et limites
+
+- **VALIDÉ sur formulaire contrôlé WebKit et Chromium** : pont entre origines avec stockage GM simulé, valeurs exactes, setters/événements natifs, catégorie dynamique, fichiers dans le même ordre et mêmes octets, verrou anti-répétition, reprise sans double photo, conservation des valeurs modifiées, aucune soumission.
+- **OBSERVÉ sur le vrai Vinted Espagne** lors de V3 : ids titre/description/prix, popovers catégorie/marque/état et colis. L’adaptateur cible ces éléments et refuse les correspondances absentes ou ambiguës.
+- **NON VALIDÉ** : exécution effective du userscript dans Violentmonkey/Orion iOS 18, extension GM réelle, acceptation du téléversement par Vinted, toutes les marques/conditions/langues et tous les attributs de catégorie. Les tests contrôlés ne prouvent pas ces comportements.
+- **PARTIEL** : attributs supplémentaires, menus non reconnus et photos refusées requièrent le secours manuel. Aucun brouillon distant n’est sauvegardé : il s’agit d’un formulaire prérempli non publié, qui peut être perdu si le site est fermé.
+
+Les versions V1/V2/V3 restent compatibles ; avant mise à jour, la sauvegarde hors navigateur reste obligatoire. [Audit historique V3](docs/V3-AUDIT.md) et [limites V3.1](docs/V3.1.md).
 
 ## Installation unique sur iPhone
 
@@ -69,7 +78,7 @@ Une nouvelle image est limitée à **15 Mo** ; une sauvegarde à **100 Mo**. Pas
 
 **Le stockage du navigateur n’est pas une sauvegarde.** Effacer les données, changer de profil, la navigation privée, désinstaller l’extension ou une éviction du navigateur peut rendre les données inaccessibles. Exportez après chaque session importante.
 
-Le userscript s’exécute localement une fois injecté, sans requête réseau applicative. Le chargement initial de la page example.com et l’installation/les mises à jour demandent un accès au réseau. Cette version n’est pas une PWA installable avec un lancement hors connexion garanti. Le stockage est celui de l’origine example.com, accessible aux scripts autorisés de cette origine : ce n’est pas un coffre chiffré.
+Le catalogue s’exécute localement. Sur le formulaire Vinted, les événements de sélection des photos peuvent déclencher le téléversement natif vers Vinted. Le chargement initial de la page example.com et l’installation/les mises à jour demandent un accès au réseau. Cette version n’est pas une PWA installable avec un lancement hors connexion garanti. Le stockage est celui de l’origine example.com, accessible aux scripts autorisés de cette origine : ce n’est pas un coffre chiffré.
 
 ## Mises à jour
 
@@ -85,7 +94,7 @@ Les URL et leurs octets sont vérifiés après publication. Cela vérifie la dis
 
 ## Vinted
 
-Orion Express prépare des annonces : textes copiables, aperçu et photos à joindre manuellement. Il ne se connecte pas à Vinted et n’y injecte aucun script. Pas de robot de publication, de contournement, de clic automatisé ni d’évitement de détection. La préparation d’une fiche ne valide pas l’éligibilité de la vente ou du compte particulier pour du stock commercial. Aucune intégration future ne sera activée sans méthode autorisée ; aucune API Vinted autorisée n’a été identifiée ou utilisée pour cette livraison.
+Orion Express prépare des annonces : textes copiables, aperçu et photos à joindre manuellement. Le mode V3.1 injecte un module expérimental limité au formulaire de création sur vinted.es ; aucune API privée. Pas de robot de publication, de contournement ou d’évitement de détection. Le module clique uniquement sur des choix identifiés de catégorie, marque, état et colis. La préparation d’une fiche ne valide pas l’éligibilité de la vente ou du compte particulier pour du stock commercial. Aucune autorisation officielle de ce test n’a été obtenue et aucune API Vinted privée n’est utilisée.
 
 ## Développement et tests
 

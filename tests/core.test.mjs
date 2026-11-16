@@ -106,7 +106,7 @@ test('métadonnées stables et build reproductible octet pour octet',async () =>
   const after = await readFile('orion-express.user.js','utf8'); assert.equal(before,after);
   const meta = await readFile('orion-express.meta.js','utf8'); assert.ok(after.startsWith(meta));
   for (const key of ['name','namespace','version','match','updateURL','downloadURL','grant']) assert.match(meta,new RegExp(`// @${key} `));
-  assert.match(meta,/@match https:\/\/example.com\/\*/); assert.match(meta,/@version 2\.0\.0/);
+  assert.match(meta,/@match https:\/\/example.com\/\*/); const pkg=JSON.parse(await readFile('package.json','utf8')); assert.ok(meta.includes(`// @version ${pkg.version}\n`));
   assert.match(meta,/@updateURL https:\/\/raw.githubusercontent.com\/TheoRuffin\/orion-express\/main\/orion-express.meta.js/);
   assert.doesNotMatch(after,/@require|\beval\(|\bfetch\(|XMLHttpRequest/);
   execFileSync(process.execPath,['--check','orion-express.user.js']);

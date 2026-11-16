@@ -23,4 +23,4 @@ const ui = await readFile(new URL('src/app.js', root), 'utf8');
 const css = await readFile(new URL('src/style.css', root), 'utf8');
 await writeFile(new URL('orion-express.meta.js', root), header);
 await writeFile(new URL('orion-express.user.js', root), header + '\n(() => {\n\'use strict\';\n' + core + '\nconst APP_CSS = ' + JSON.stringify(css) + ';\n' + ui + '\n})();\n');
-console.log('Build 2.0.0 : userscript autonome et métadonnées générés.');
+console.log(`Build ${pkg.version} : userscript autonome et métadonnées générés.`);

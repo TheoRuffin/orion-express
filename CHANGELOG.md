@@ -1,5 +1,11 @@
 # Historique
 
+## 2.0.1 — 16 novembre 2026
+
+- Profil de test mobile dans un chemin ASCII pour permettre le lancement de WebKit GTK en CI Linux.
+- Nettoyage du profil dans un bloc finally. Aucun changement du schéma de données.
+- Version incrémentée et métadonnées régénérées pour le canal de mise à jour.
+
 ## 2.0.0 — 16 novembre 2026
 
 - Première livraison V2 : catalogue local, fiches multiples et aperçu en français.

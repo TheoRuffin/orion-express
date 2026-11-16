@@ -1,6 +1,6 @@
 # Orion Express V2
 
-Gestion locale de fiches produits dans **Orion sur iPhone**, distribuée sous forme de userscript Violentmonkey. Version **2.0.0**, interface française, sans serveur applicatif, sans compte supplémentaire et sans dépendance distante au lancement.
+Gestion locale de fiches produits dans **Orion sur iPhone**, distribuée sous forme de userscript Violentmonkey. Version **2.0.1**, interface française, sans serveur applicatif, sans compte supplémentaire et sans dépendance distante au lancement.
 
 [Installer le userscript](https://raw.githubusercontent.com/TheoRuffin/orion-express/main/orion-express.user.js) · [Code source](https://github.com/TheoRuffin/orion-express) · [Versions](https://github.com/TheoRuffin/orion-express/releases)
 

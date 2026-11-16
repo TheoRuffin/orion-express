@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name Orion Express
 // @namespace https://github.com/TheoRuffin/orion-express
-// @version 2.0.0
+// @version 2.0.1
 // @description Gestion locale de produits, photos, stock et sauvegardes — interface française.
 // @match https://example.com/*
 // @run-at document-end

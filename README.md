@@ -1,8 +1,28 @@
-# Orion Express V2
+# Orion Express V3
 
-Gestion locale de fiches produits dans **Orion sur iPhone**, distribuée sous forme de userscript Violentmonkey. Version **2.0.1**, interface française, sans serveur applicatif, sans compte supplémentaire et sans dépendance distante au lancement.
+Gestion locale de fiches produits dans **Orion sur iPhone**, distribuée sous forme de userscript Violentmonkey. Version **3.0.0**, interface française, sans serveur applicatif, sans compte supplémentaire et sans dépendance distante au lancement.
 
 [Installer le userscript](https://raw.githubusercontent.com/TheoRuffin/orion-express/main/orion-express.user.js) · [Code source](https://github.com/TheoRuffin/orion-express) · [Versions](https://github.com/TheoRuffin/orion-express/releases)
+
+## V3 : préparer une annonce pour le véritable Vinted Espagne
+
+**Le transfert automatique n’est pas livré** : les [conditions de Vinted](https://www.vinted.es/terms-and-conditions) restreignent les outils logiciels tiers sans autorisation. La V3 ajoute à l’application existante un assistant local de préparation qui ouvre [le vrai formulaire](https://www.vinted.es/items/new). Aucun script ne tourne sur Vinted, aucune photo n’est envoyée automatiquement. [Audit, observations réelles et limites](docs/V3-AUDIT.md).
+
+1. Dans le catalogue, choisissez une fiche complète (titre, description, prix positif, photo et stock).
+2. Appuyez sur **Préparer sur Vinted**. Le produit reste intact ; un snapshot de travail est enregistré dans une base distincte, sur example.com.
+3. Partagez **toutes les photos ensemble** vers Photos/Fichiers si le partage iOS le propose. Sinon téléchargez le ZIP, décompressez-le dans Fichiers et retrouvez toutes les images dans un dossier ; le ZIP contient également `annonce.txt`. Limite de préparation : 40 Mo d’images, sans recompression. HEIC peut être refusé par la cible : convertissez alors une copie manuellement.
+4. Ouvrez **le vrai formulaire Vinted** et connectez-vous si nécessaire. Dans son sélecteur natif, choisissez les photos du dossier ou de la photothèque. Un ZIP ne doit pas être envoyé comme photo.
+5. Revenez à l’onglet Orion Express pour copier chaque valeur, puis collez-la dans Vinted. Choisissez catégorie, marque, état et colis dans les listes natives. Les libellés français et espagnols sont affichés pour vous aider ; les textes du produit ne sont pas traduits automatiquement.
+6. Cochez les informations uniquement après les avoir vérifiées dans Vinted. Après un changement de catégorie, utilisez **J’ai changé de catégorie** pour remettre à zéro les vérifications dépendantes. Les coches sont déclaratives ; aucune lecture du formulaire.
+7. Relisez et publiez exclusivement depuis Vinted. L’assistant n’annonce jamais une publication et ne diminue pas le stock. Revenez au catalogue pour enregistrer une vente réelle.
+
+**Trois actions ouvrent le formulaire depuis le catalogue**, mais le remplir demande ensuite les manipulations ci-dessus. Une annonce complète en trois actions n’est pas atteinte. La préparation se reprend avec **Reprendre ma préparation Vinted**, même après rechargement ; attendez le message de vérification enregistrée avant de fermer. Une interruption avant validation d’une écriture peut perdre la dernière coche, sans modifier les produits. Une préparation est un instantané : préparez de nouveau après une modification de fiche. Les photos du snapshot occupent du stockage supplémentaire, jusqu’à effacement de la préparation ; elles ne sont pas incluses séparément dans l’export du catalogue. Effacer la préparation ne supprime pas les produits.
+
+Le formulaire Espagne connecté a été observé dans Chrome (interface en français) ; les photos n’y ont pas été envoyées et aucun brouillon n’a été sauvegardé. **Le partage et le parcours complet V3 sur Orion iPhone restent NON VALIDÉS.** Les tests automatisés utilisent un formulaire contrôlé et ne prouvent pas une autorisation ou une intégration réelle de Vinted.
+
+### Mettre à jour depuis V2
+
+Exportez votre catalogue vers Fichiers, ouvrez Violentmonkey et lancez **Rechercher des mises à jour** pour Orion Express. La version affichée doit devenir **3.0.0**. Rechargez ensuite example.com. Si la recherche tarde, ouvrez le lien d’installation en haut de ce document et acceptez la mise à jour de la même identité de script. Ne désinstallez pas le script et n’effacez pas les données du site. Aucune permission supplémentaire, aucun changement de base produits, URL de mise à jour inchangées. Les anciennes versions restent disponibles dans les releases.
 
 ## Installation unique sur iPhone
 

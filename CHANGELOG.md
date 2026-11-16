@@ -1,5 +1,14 @@
 # Historique
 
+## 3.0.0 — 16 novembre 2026
+
+- Bouton Préparer sur Vinted et ouverture du véritable formulaire Espagne.
+- Préparation locale reprenable dans une base indépendante ; aucune modification du stockage produits.
+- Photos partagées ensemble, ZIP standard et téléchargements individuels.
+- Copie de chaque champ, contrôles manuels, invalidation après changement de catégorie et retour à la fiche.
+- Aucun remplissage ni upload automatique sur Vinted : absence d’autorisation identifiée pour les outils tiers.
+- Audit réel desktop connecté et tests contrôlés séparés. Parcours iPhone V3 non validé.
+
 ## 2.0.1 — 16 novembre 2026
 
 - Profil de test mobile dans un chemin ASCII pour permettre le lancement de WebKit GTK en CI Linux.

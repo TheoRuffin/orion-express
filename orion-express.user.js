@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name Orion Express
 // @namespace https://github.com/TheoRuffin/orion-express
-// @version 2.0.1
-// @description Gestion locale de produits, photos, stock et sauvegardes — interface française.
+// @version 3.0.0
+// @description Produits, photos, stock, sauvegardes et préparation manuelle pour Vinted Espagne.
 // @match https://example.com/*
 // @run-at document-end
 // @noframes
@@ -200,13 +200,77 @@ async function readBackup(text) {
 }
 const listing = p => [p.title, p.description, `Prix : ${p.price.toFixed(2)} €`, `Catégorie : ${p.category}`, `Marque : ${p.brand}`, `État : ${p.condition}`, `Colis : ${p.shipping}`].join('\n\n');
 
-const APP_CSS = ":host{all:initial;font:16px -apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;color:#172b35}*{box-sizing:border-box}.shell{height:100%;overflow:auto;background:#f6f5ef;padding:24px max(20px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));-webkit-overflow-scrolling:touch}header,header>div,.toolbar,.stats,.card,dl>div{display:flex;align-items:center}header{justify-content:space-between;max-width:900px;margin:auto}header>div{display:block}small{font-size:10px;letter-spacing:.14em;font-weight:700;color:#55716f}h1{font-size:28px;letter-spacing:-1px;margin:5px 0 12px}h1 em{font-family:Georgia,serif;font-weight:400;color:#087b67}h2{font-size:30px;line-height:1.12;letter-spacing:-.8px;margin:14px 0 22px}h3{font-size:18px;margin:10px 0}p{line-height:1.6}button,a,input,textarea{font:inherit}button,a{touch-action:manipulation}button{min-height:46px;padding:11px 16px;border:1px solid #cbd7cf;background:#fff;color:#172b35;border-radius:12px;font-weight:600;cursor:pointer}button:disabled{opacity:.5;cursor:default}button:focus-visible,input:focus-visible,textarea:focus-visible,a:focus-visible{outline:3px solid #dc9a2b;outline-offset:3px}.primary{background:#087b67;border-color:#087b67;color:white}.origin{font-size:11px;max-width:900px;margin:8px auto 14px;color:#55716f}.hero{padding:28px;border-radius:22px;background:#e4ede4;margin-bottom:18px}.stats{gap:24px;margin-bottom:24px;font-size:13px}.stats b{display:block;font-size:27px}.toolbar{gap:8px;flex-wrap:wrap;margin:16px 0}.toolbar button{flex:1}.search{margin:24px 0 16px}label{display:block;font-weight:600;font-size:13px;margin:18px 0 8px}input,textarea{display:block;width:100%;margin-top:8px;padding:14px;border:1px solid #bdcbc3;border-radius:12px;background:white;color:#172b35;font-size:16px}textarea{resize:vertical}main,footer,#status{max-width:900px;margin:auto}.cards{display:grid;gap:12px}.card{width:100%;text-align:left;gap:16px;padding:14px}.card>div:nth-child(2){flex:1;min-width:0;overflow-wrap:anywhere}.card h3{font-size:18px;margin:5px 0}.card span{font-weight:400;font-size:13px}.thumb{width:64px;height:76px;flex-shrink:0;border-radius:10px;background:#eeeade;overflow:hidden;display:grid;place-items:center;font-size:30px}.thumb .photo,.thumb img{width:100%;height:76px;object-fit:cover}.thumb p{font-size:10px}.photo{border-radius:12px;overflow:hidden;background:#eeeade;min-width:0}.photo img{width:100%;height:180px;object-fit:contain;display:block}.photo button{font-size:12px;padding:8px;min-height:44px}.photo p{padding:12px;font-size:12px}.photos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0}.hint,footer,.tip{font-size:12px;color:#55716f}.tip{border-top:1px solid #cbd7cf;margin-top:30px;padding-top:20px}.tip b{font-size:14px}.empty{padding:30px 18px;text-align:center;border:1px dashed #bdcbc3;border-radius:18px}.file{background:#e4ede4;border-radius:12px;padding:14px}.file input{font-size:13px;padding:8px}.save{position:sticky;bottom:8px;width:100%;margin-top:18px;box-shadow:0 5px 20px #172b3522}.price{font-size:28px;color:#087b67;font-weight:700}.description{white-space:pre-wrap;overflow-wrap:anywhere}dl>div{justify-content:space-between;border-bottom:1px solid #dce3dc;padding:12px 0;gap:12px}dt{font-size:13px;color:#55716f}dd{margin:0;overflow-wrap:anywhere;text-align:right}.danger{color:#a33030;border-color:#debcbc;margin:24px 0}.sales{padding-left:20px;line-height:1.8;font-size:13px}a{color:#087b67;display:inline-block;min-height:44px;padding:12px 0;overflow-wrap:anywhere}#status{font-size:13px;line-height:1.5;padding:10px 0;color:#087b67}#status.error{color:#a33030}footer{padding:28px 0 10px;line-height:1.7}article{padding-top:20px}#sale{display:flex;gap:10px;flex-wrap:wrap;align-items:end}#sale label{flex:1;min-width:100px}#sale button{margin-bottom:8px}@media(min-width:700px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{padding:40px}.hero h2{max-width:420px;font-size:44px}.photos{grid-template-columns:repeat(3,minmax(0,1fr))}form:not(#sale){max-width:650px}header{padding-top:12px}}@media(prefers-reduced-motion:no-preference){button{transition:background .15s}button:hover{filter:brightness(.97)}}\n\n.shell.mini{padding:6px 10px}.mini header small{display:none}.mini h1{font-size:18px;margin:0}.mini header{padding:0}.mini #minimize{min-height:44px}\n";
+// Independent local workspace: never opens or modifies the product database.
+const VINTED_NEW = 'https://www.vinted.es/items/new';
+const PREP_FIELDS = [['title','Titre / Título'],['description','Description / Descripción'],['price','Prix / Precio'],['category','Catégorie / Categoría'],['brand','Marque / Marca'],['condition','État / Estado'],['shipping','Colis / Tamaño del paquete']];
+function prepareProduct(raw) {
+  const p = normalize(raw);
+  if (!p.title.trim() || !p.description.trim() || p.price <= 0 || !p.photos.length || remaining(p) < 1) throw new Error('Ajoutez un titre, une description, un prix positif, au moins une photo et du stock avant de préparer.');
+  const fields = Object.fromEntries(PREP_FIELDS.map(([key]) => [key,key === 'price' ? p.price.toFixed(2).replace('.',',') : p[key]]));
+  return {id:'active', version:1, sourceId:p.id, createdAt:new Date().toISOString(), fields, photos:structuredClone(p.photos), checked:{}, categoryChecked:false};
+}
+function checkPreparation(p, key, checked) {
+  if (![...PREP_FIELDS.map(([k])=>k),'photos','dynamic','review'].includes(key)) throw new Error('Étape inconnue.');
+  const next = structuredClone(p); next.checked[key] = checked;
+  if (key === 'category') { next.checked.dynamic=false; next.checked.brand=false; next.checked.condition=false; next.checked.shipping=false; next.checked.review=false; }
+  if (key !== 'review') next.checked.review=false;
+  return next;
+}
+function prepStore() {
+  return new Promise((resolve,reject) => {
+    const q=indexedDB.open('orion-express-preparations',1);
+    q.onupgradeneeded=()=>q.result.createObjectStore('workspace',{keyPath:'id'});
+    q.onerror=()=>reject(q.error); q.onblocked=()=>reject(new Error('Fermez les autres onglets Orion Express puis réessayez.'));
+    q.onsuccess=()=>{ const db=q.result; db.onversionchange=()=>db.close(); resolve({
+      run(mode,op) { return new Promise((yes,no)=>{let value;const tx=db.transaction('workspace',mode);tx.oncomplete=()=>yes(value);tx.onabort=()=>no(tx.error || new Error('Préparation non enregistrée.'));tx.onerror=()=>{}; const req=op(tx.objectStore('workspace')); if(req) req.onsuccess=()=>{value=req.result;};}); },
+      async get(){return this.run('readonly',s=>s.get('active'));},
+      async put(p){await this.run('readwrite',s=>s.put(p));},
+      async clear(){await this.run('readwrite',s=>s.delete('active'));},
+      close(){db.close();}
+    });};
+  });
+}
+async function preparedFiles(p) {
+  const files=[];
+  for(let i=0;i<p.photos.length;i++) {
+    const url=await photoURL(p.photos[i]);
+    const match=/^data:(image\/[a-z0-9.+-]+);base64,([a-z0-9+/=\s]+)$/i.exec(url);
+    if(!match) throw new Error(`Photo ${i+1} non réutilisable. Original conservé ; remplacez-la dans la fiche.`);
+    const bytes=Uint8Array.from(atob(match[2]),c=>c.charCodeAt(0));
+    if(!bytes.length) throw new Error(`Photo ${i+1} vide.`);
+    const type=match[1].toLowerCase(); const ext=type.split('/')[1].replace('jpeg','jpg');
+    files.push(new File([bytes],`orion-photo-${String(i+1).padStart(2,'0')}.${ext}`,{type}));
+  }
+  return files;
+}
+// ZIP STORE with CRC32, UTF-8 names, no dependency and no remote service.
+async function photoArchive(files, fields) {
+  const text=PREP_FIELDS.map(([k,label])=>`${label} :\n${fields[k] || 'À choisir dans Vinted'}`).join('\n\n');
+  const all=[...files,new File([text],'annonce.txt',{type:'text/plain'})], chunks=[],central=[];
+  let offset=0;
+  for(const f of all) {
+    const data=new Uint8Array(await f.arrayBuffer()),name=new TextEncoder().encode(f.name);
+    let crc=0xffffffff;
+    for(const byte of data){crc^=byte;for(let j=0;j<8;j++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);}
+    crc=(crc^0xffffffff)>>>0;
+    const header=new Uint8Array(30+name.length), h=new DataView(header.buffer);
+    h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x800,true);h.setUint16(12,33,true);h.setUint32(14,crc,true);h.setUint32(18,data.length,true);h.setUint32(22,data.length,true);h.setUint16(26,name.length,true);header.set(name,30);
+    const entry=new Uint8Array(46+name.length),c=new DataView(entry.buffer);
+    c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(8,0x800,true);c.setUint16(14,33,true);c.setUint32(16,crc,true);c.setUint32(20,data.length,true);c.setUint32(24,data.length,true);c.setUint16(28,name.length,true);c.setUint32(42,offset,true);entry.set(name,46);
+    chunks.push(header,data);central.push(entry);offset+=header.length+data.length;
+  }
+  const size=central.reduce((n,b)=>n+b.length,0),end=new Uint8Array(22),e=new DataView(end.buffer);
+  e.setUint32(0,0x06054b50,true);e.setUint16(8,all.length,true);e.setUint16(10,all.length,true);e.setUint32(12,size,true);e.setUint32(16,offset,true);
+  return new File([...chunks,...central,end],'orion-vinted-photos.zip',{type:'application/zip'});
+}
+
+const APP_CSS = ":host{all:initial;font:16px -apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;color:#172b35}*{box-sizing:border-box}.shell{height:100%;overflow:auto;background:#f6f5ef;padding:24px max(20px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));-webkit-overflow-scrolling:touch}header,header>div,.toolbar,.stats,.card,dl>div{display:flex;align-items:center}header{justify-content:space-between;max-width:900px;margin:auto}header>div{display:block}small{font-size:10px;letter-spacing:.14em;font-weight:700;color:#55716f}h1{font-size:28px;letter-spacing:-1px;margin:5px 0 12px}h1 em{font-family:Georgia,serif;font-weight:400;color:#087b67}h2{font-size:30px;line-height:1.12;letter-spacing:-.8px;margin:14px 0 22px}h3{font-size:18px;margin:10px 0}p{line-height:1.6}button,a,input,textarea{font:inherit}button,a{touch-action:manipulation}button{min-height:46px;padding:11px 16px;border:1px solid #cbd7cf;background:#fff;color:#172b35;border-radius:12px;font-weight:600;cursor:pointer}button:disabled{opacity:.5;cursor:default}button:focus-visible,input:focus-visible,textarea:focus-visible,a:focus-visible{outline:3px solid #dc9a2b;outline-offset:3px}.primary{background:#087b67;border-color:#087b67;color:white}.origin{font-size:11px;max-width:900px;margin:8px auto 14px;color:#55716f}.hero{padding:28px;border-radius:22px;background:#e4ede4;margin-bottom:18px}.stats{gap:24px;margin-bottom:24px;font-size:13px}.stats b{display:block;font-size:27px}.toolbar{gap:8px;flex-wrap:wrap;margin:16px 0}.toolbar button{flex:1}.search{margin:24px 0 16px}label{display:block;font-weight:600;font-size:13px;margin:18px 0 8px}input,textarea{display:block;width:100%;margin-top:8px;padding:14px;border:1px solid #bdcbc3;border-radius:12px;background:white;color:#172b35;font-size:16px}textarea{resize:vertical}main,footer,#status{max-width:900px;margin:auto}.cards{display:grid;gap:12px}.card{width:100%;text-align:left;gap:16px;padding:14px}.card>div:nth-child(2){flex:1;min-width:0;overflow-wrap:anywhere}.card h3{font-size:18px;margin:5px 0}.card span{font-weight:400;font-size:13px}.thumb{width:64px;height:76px;flex-shrink:0;border-radius:10px;background:#eeeade;overflow:hidden;display:grid;place-items:center;font-size:30px}.thumb .photo,.thumb img{width:100%;height:76px;object-fit:cover}.thumb p{font-size:10px}.photo{border-radius:12px;overflow:hidden;background:#eeeade;min-width:0}.photo img{width:100%;height:180px;object-fit:contain;display:block}.photo button{font-size:12px;padding:8px;min-height:44px}.photo p{padding:12px;font-size:12px}.photos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0}.hint,footer,.tip{font-size:12px;color:#55716f}.tip{border-top:1px solid #cbd7cf;margin-top:30px;padding-top:20px}.tip b{font-size:14px}.empty{padding:30px 18px;text-align:center;border:1px dashed #bdcbc3;border-radius:18px}.file{background:#e4ede4;border-radius:12px;padding:14px}.file input{font-size:13px;padding:8px}.save{position:sticky;bottom:8px;width:100%;margin-top:18px;box-shadow:0 5px 20px #172b3522}.price{font-size:28px;color:#087b67;font-weight:700}.description{white-space:pre-wrap;overflow-wrap:anywhere}dl>div{justify-content:space-between;border-bottom:1px solid #dce3dc;padding:12px 0;gap:12px}dt{font-size:13px;color:#55716f}dd{margin:0;overflow-wrap:anywhere;text-align:right}.danger{color:#a33030;border-color:#debcbc;margin:24px 0}.sales{padding-left:20px;line-height:1.8;font-size:13px}a{color:#087b67;display:inline-block;min-height:44px;padding:12px 0;overflow-wrap:anywhere}#status{font-size:13px;line-height:1.5;padding:10px 0;color:#087b67}#status.error{color:#a33030}footer{padding:28px 0 10px;line-height:1.7}article{padding-top:20px}#sale{display:flex;gap:10px;flex-wrap:wrap;align-items:end}#sale label{flex:1;min-width:100px}#sale button{margin-bottom:8px}@media(min-width:700px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{padding:40px}.hero h2{max-width:420px;font-size:44px}.photos{grid-template-columns:repeat(3,minmax(0,1fr))}form:not(#sale){max-width:650px}header{padding-top:12px}}@media(prefers-reduced-motion:no-preference){button{transition:background .15s}button:hover{filter:brightness(.97)}}\n\n.shell.mini{padding:6px 10px}.mini header small{display:none}.mini h1{font-size:18px;margin:0}.mini header{padding:0}.mini #minimize{min-height:44px}\n.prep-field{padding:16px 0;border-bottom:1px solid #cbd7cf}.check{display:flex;align-items:center;gap:12px;font-size:14px;line-height:1.5}.check input{width:24px;height:24px;flex-shrink:0;margin:0}.vinted-link{padding:14px 18px;border-radius:12px;text-decoration:none}#prep-summary{background:#e4ede4;padding:14px;border-radius:12px}#photo-zip{display:block}#resume-prep{margin-bottom:12px}\n";
 if (document.getElementById('orion-express-v2')) return;
 const host = document.createElement('div');
 host.id = 'orion-express-v2';
 host.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#f6f5ef;color:#172b35';
 const root = host.attachShadow({ mode: 'open' });
-root.innerHTML = `<style>${APP_CSS}</style><div class="shell"><header><div><small>VOTRE ATELIER DE VENTE · V2</small><h1>Orion <em>Express</em></h1></div><button id="minimize" aria-label="Réduire l’application">−</button></header><div class="origin">Local · example.com · aucune synchronisation</div><div id="status" role="status" aria-live="polite"></div><main></main><footer>Les données du navigateur ne sont pas une sauvegarde. Exportez vers Fichiers régulièrement.<br>Préparation manuelle des annonces : aucune connexion ni publication sur Vinted.</footer></div>`;
+root.innerHTML = `<style>${APP_CSS}</style><div class="shell"><header><div><small>VOTRE ATELIER DE VENTE · V3</small><h1>Orion <em>Express</em></h1></div><button id="minimize" aria-label="Réduire l’application">−</button></header><div class="origin">Local · example.com · aucune synchronisation</div><div id="status" role="status" aria-live="polite"></div><main></main><footer>Les données du navigateur ne sont pas une sauvegarde. Exportez vers Fichiers régulièrement.<br>Préparation manuelle des annonces : aucune connexion ni publication sur Vinted.</footer></div>`;
 document.body.append(host);
 const $ = s => root.querySelector(s);
 const main = $('main');
@@ -216,7 +280,7 @@ const money = n => new Intl.NumberFormat('fr-FR', { style: 'currency', currency:
 function status(message, bad = false) { $('#status').textContent = message; $('#status').className = bad ? 'error' : ''; }
 async function safe(action) { if (busy) return; busy = true; main.inert = true; main.setAttribute('aria-busy','true'); try { await action(); } catch(e) { status(errorMessage(e), true); } finally { busy = false; main.inert = false; main.removeAttribute('aria-busy'); } }
 function leave() { return !dirty || confirm('Quitter sans enregistrer les modifications ?'); }
-window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('beforeunload', e => { if (dirty || busy) { e.preventDefault(); e.returnValue = ''; } });
 $('#minimize').onclick = () => {
   const minimized = host.style.height === '58px';
   host.style.cssText = minimized ? 'position:fixed;inset:0;z-index:2147483647;background:#f6f5ef;color:#172b35' : 'position:fixed;right:8px;bottom:8px;inset:auto 8px 8px auto;height:58px;width:220px;z-index:2147483647;background:#f6f5ef;border-radius:18px;overflow:hidden';
@@ -245,8 +309,9 @@ async function renderPhotos(container, photos, editable = false, changed = () =>
 function checkFile(f) { if (!f.type.startsWith('image/')) throw new Error('Choisissez une image.'); if (f.size > 15 * 1024 * 1024) throw new Error('Image supérieure à 15 Mo. Réduisez-la avant ajout.'); }
 async function home() {
   dirty = false; selected = undefined; await load();
-  main.innerHTML = `<section class="hero"><small>LE CATALOGUE</small><h2>Prêt pour la prochaine vente.</h2><div class="stats"><span><b>${products.length}</b> fiches</span><span><b>${products.reduce((n,p) => n + remaining(p),0)}</b> en stock</span></div><button class="primary" id="new">＋ Nouveau produit</button></section><div class="toolbar"><button id="export">Exporter la sauvegarde</button><button id="import">Restaurer une sauvegarde</button></div><div id="download"></div><label class="search">Retrouver une fiche<input id="search" type="search" placeholder="Titre, marque, catégorie…"></label><div class="cards"></div><input hidden type="file" accept="application/json,.json" id="backup"><section class="tip"><b>Une seule origine, vos données retrouvées</b><p>Ouvrez toujours https://example.com. Désactivez V1 avant d’utiliser V2. Une sauvegarde contient vos photos : conservez-la dans Fichiers, jamais dans le dépôt public.</p></section>`;
+  main.innerHTML = `<section class="hero"><small>LE CATALOGUE</small><h2>Prêt pour la prochaine vente.</h2><div class="stats"><span><b>${products.length}</b> fiches</span><span><b>${products.reduce((n,p) => n + remaining(p),0)}</b> en stock</span></div><button class="primary" id="new">＋ Nouveau produit</button></section><div class="toolbar"><button id="export">Exporter la sauvegarde</button><button id="import">Restaurer une sauvegarde</button></div><button id="resume-prep">Reprendre ma préparation Vinted</button><div id="download"></div><label class="search">Retrouver une fiche<input id="search" type="search" placeholder="Titre, marque, catégorie…"></label><div class="cards"></div><input hidden type="file" accept="application/json,.json" id="backup"><section class="tip"><b>Une seule origine, vos données retrouvées</b><p>Ouvrez toujours https://example.com. Désactivez V1 avant d’utiliser V2. Une sauvegarde contient vos photos : conservez-la dans Fichiers, jamais dans le dépôt public.</p></section>`;
   bind('#new', async () => edit());
+  bind('#resume-prep', async () => showPreparation());
   const cards = $('.cards');
   const draw = () => {
     cards.replaceChildren(); const query = $('#search').value.toLocaleLowerCase('fr');
@@ -312,16 +377,63 @@ async function copy(text) {
 async function preview(id) {
   const p = await repo.get(id); if (!p) throw new Error('Fiche introuvable.');
   selected = id;
-  main.innerHTML = `<button id="back">← Catalogue</button><article><small>APERÇU DE L’ANNONCE</small><h2>${esc(p.title)}</h2><div class="price">${money(p.price)}</div><div class="photos"></div><p class="description">${esc(p.description || 'Aucune description')}</p><dl>${[['Catégorie',p.category],['Marque',p.brand],['État',p.condition],['Colis',p.shipping],['Stock initial',p.initialStock],['Stock restant',remaining(p)]].map(([k,v])=>`<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl><div class="toolbar"><button id="edit">Modifier</button><button id="duplicate">Dupliquer</button><button id="copy">Copier l’annonce</button><button id="copy-title">Copier le titre</button><button id="copy-description">Copier la description</button></div><textarea id="copy-fallback" hidden aria-label="Texte à copier" rows="8"></textarea><h3>Photos à joindre manuellement</h3><div id="photo-downloads" class="toolbar"></div><h3>Enregistrer une vente</h3><form id="sale"><label>Quantité<input name="quantity" type="number" value="1" min="1" max="${remaining(p)}" step="1" required inputmode="numeric"></label><label>Prix unitaire (€)<input name="unitPrice" type="number" value="${p.price}" min="0" step="0.01" required inputmode="decimal"></label><button type="submit" ${remaining(p) === 0 ? 'disabled' : ''}>Confirmer la vente</button></form><h3>Historique des ventes</h3><ul class="sales">${p.sales.length ? p.sales.map(s=>`<li>${esc(new Date(s.date).toLocaleString('fr-FR'))} · ${s.quantity} × ${money(s.unitPrice)}</li>`).join('') : '<li>Aucune vente enregistrée.</li>'}</ul><button class="danger" id="delete">Supprimer cette fiche</button></article>`;
+  main.innerHTML = `<button id="back">← Catalogue</button><article><small>APERÇU DE L’ANNONCE</small><h2>${esc(p.title)}</h2><div class="price">${money(p.price)}</div><div class="photos"></div><p class="description">${esc(p.description || 'Aucune description')}</p><dl>${[['Catégorie',p.category],['Marque',p.brand],['État',p.condition],['Colis',p.shipping],['Stock initial',p.initialStock],['Stock restant',remaining(p)]].map(([k,v])=>`<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl><button id="prepare-vinted" class="primary">Préparer sur Vinted</button><div class="toolbar"><button id="edit">Modifier</button><button id="duplicate">Dupliquer</button><button id="copy">Copier l’annonce</button><button id="copy-title">Copier le titre</button><button id="copy-description">Copier la description</button></div><textarea id="copy-fallback" hidden aria-label="Texte à copier" rows="8"></textarea><h3>Photos à joindre manuellement</h3><div id="photo-downloads" class="toolbar"></div><h3>Enregistrer une vente</h3><form id="sale"><label>Quantité<input name="quantity" type="number" value="1" min="1" max="${remaining(p)}" step="1" required inputmode="numeric"></label><label>Prix unitaire (€)<input name="unitPrice" type="number" value="${p.price}" min="0" step="0.01" required inputmode="decimal"></label><button type="submit" ${remaining(p) === 0 ? 'disabled' : ''}>Confirmer la vente</button></form><h3>Historique des ventes</h3><ul class="sales">${p.sales.length ? p.sales.map(s=>`<li>${esc(new Date(s.date).toLocaleString('fr-FR'))} · ${s.quantity} × ${money(s.unitPrice)}</li>`).join('') : '<li>Aucune vente enregistrée.</li>'}</ul><button class="danger" id="delete">Supprimer cette fiche</button></article>`;
   await renderPhotos($('.photos'),p.photos);
   for (let i=0; i<p.photos.length; i++) {
     try { const a = document.createElement('a'); a.href = await photoURL(p.photos[i]); a.download = `photo-${i+1}`; a.textContent = `Photo ${i+1} ↗`; $('#photo-downloads').append(a); } catch { /* original retained */ }
   }
+  bind('#prepare-vinted', async () => startPreparation(p));
   bind('#back', home); bind('#edit',async () => edit(p)); bind('#duplicate', async () => { const d = await repo.duplicate(id); await preview(d.id); status('Copie créée, historique des ventes réinitialisé.'); });
   bind('#copy',async () => copy(listing(p))); bind('#copy-title',async () => copy(p.title)); bind('#copy-description',async () => copy(p.description));
   bind('#delete', async () => { if (confirm('Supprimer définitivement cette fiche et ses photos ? Exportez une sauvegarde avant de continuer.')) { await repo.remove(id); await home(); status('Fiche supprimée.'); } });
   $('#sale').onsubmit = e => { e.preventDefault(); void safe(async () => { const data = new FormData($('#sale')); await repo.sell(id,Number(data.get('quantity')),Number(data.get('unitPrice'))); await preview(id); status('Vente enregistrée, stock mis à jour.'); }); };
 }
 void safe(async () => { repo = new Products(await openDB()); await home(); status('Catalogue chargé. Avant la première modification V1, exportez une sauvegarde.'); });
+
+let preparationDB, preparationURLs=[];
+async function workspace() { if(!preparationDB) preparationDB=await prepStore(); return preparationDB; }
+async function startPreparation(product) {
+  const next=prepareProduct(product);
+  const files=await preparedFiles(next);
+  if(files.reduce((n,f)=>n+f.size,0)>40*1024*1024) throw new Error('Photos supérieures à 40 Mo : réduisez leur taille dans une copie de la fiche avant de préparer. Les originaux sont conservés.');
+  const store=await workspace(), previous=await store.get();
+  if(previous && !confirm('Remplacer la préparation en cours ? Les fiches du catalogue et leurs photos seront conservées.')) return;
+  await store.put(next); await showPreparation();
+}
+async function showPreparation() {
+  const store=await workspace(); let p=await store.get();
+  if(!p) {status('Aucune préparation en cours. Ouvrez une fiche puis Préparer sur Vinted.');return;}
+  if(p.version!==1) throw new Error('Préparation non reconnue. Le catalogue est conservé.');
+  for(const url of preparationURLs) URL.revokeObjectURL(url); preparationURLs=[];
+  const files=await preparedFiles(p), archive=await photoArchive(files,p.fields);
+  const url=URL.createObjectURL(archive);preparationURLs.push(url);
+  main.innerHTML=`<button id="prep-back">← Retour à la fiche produit</button><section class="tip"><small>ASSISTANT VINTED ESPAGNE · PARCOURS MANUEL</small><h2>${esc(p.fields.title)}</h2><p>Informations préparées ici. Aucun champ n’est rempli sur Vinted. Copiez puis collez dans le site, et cochez seulement après vérification.</p><a class="primary vinted-link" href="${VINTED_NEW}" target="_blank" rel="noopener noreferrer">Ouvrir le vrai formulaire Vinted ↗</a><p>La connexion peut être nécessaire. Revenez à cet onglet après une interruption : la préparation est enregistrée sur cet appareil.</p></section><h3>1 · Vos ${files.length} photo(s)</h3><button id="share-photos">Partager les photos ensemble</button><a id="photo-zip" download="orion-vinted-photos.zip" href="${url}">Télécharger toutes les photos (ZIP)</a><p class="hint">Dans le partage iOS, enregistrez les images dans Photos ou Fichiers si proposé. Sinon, téléchargez le ZIP, ouvrez-le dans Fichiers pour l’extraire, puis sélectionnez les images ensemble dans le sélecteur de Vinted. Le fichier annonce.txt contient aussi les textes. Aucun envoi automatique.</p><div id="prep-photos" class="photos"></div><label class="check"><input type="checkbox" data-check="photos" ${p.checked.photos?'checked':''}> J’ai ajouté et vérifié les photos dans Vinted</label><h3>2 · Copier, coller, vérifier</h3><div id="prep-fields"></div><textarea id="copy-fallback" hidden aria-label="Texte à copier" rows="6"></textarea><h3>3 · Catégorie et vérification finale</h3><p>Choisissez la catégorie dans la recherche hiérarchique de Vinted. Pour « Jeux de société », renseignez aussi les champs supplémentaires affichés. La marque, l’état et le colis restent à sélectionner dans leurs listes.</p><button id="category-changed">J’ai changé de catégorie : revérifier les choix</button><label class="check"><input type="checkbox" data-check="dynamic" ${p.checked.dynamic?'checked':''}> J’ai vérifié les champs supplémentaires, la marque, l’état et le colis après le choix de catégorie</label><label class="check"><input type="checkbox" data-check="review" ${p.checked.review?'checked':''}> J’ai comparé toutes les informations et les photos avec l’annonce Vinted</label><p id="prep-summary" role="status"></p><p class="hint">Ces coches sont vos confirmations manuelles, pas une détection du formulaire. Publication exclusivement depuis le bouton natif Vinted. Aucune vente ni diminution du stock n’est enregistrée par cet assistant.</p><button id="clear-prep">Effacer uniquement cette préparation</button>`;
+  const rows=$('#prep-fields');
+  for(const [key,label] of PREP_FIELDS) {
+    const row=document.createElement('section');row.className='prep-field';
+    row.innerHTML=`<h3>${label}</h3><p class="description">${esc(p.fields[key] || 'À choisir manuellement dans Vinted')}</p><button type="button" data-copy="${key}" ${p.fields[key]?'':'disabled'}>Copier ${label.split(' / ')[0].toLowerCase()}</button><label class="check"><input type="checkbox" data-check="${key}" ${p.checked[key]?'checked':''}> Vérifié dans Vinted</label>`;rows.append(row);
+    row.querySelector('button').onclick=()=>safe(async()=>copy(p.fields[key]));
+  }
+  const summary=()=>{
+    const keys=[...PREP_FIELDS.map(([k])=>k),'photos','dynamic','review'];
+    $('#prep-summary').textContent=`Préparé localement : ${PREP_FIELDS.filter(([k])=>p.fields[k]).length}/7 valeurs et ${files.length} photo(s). Vérifié par vous dans Vinted : ${keys.filter(k=>p.checked[k]).length}/${keys.length}.`;
+  };summary();
+  for(const box of root.querySelectorAll('[data-check]')) box.onchange=()=>safe(async()=>{
+    const before=p,next=checkPreparation(p,box.dataset.check,box.checked);
+    try {await store.put(next);p=next;} catch(e){box.checked=!!before.checked[box.dataset.check];throw e;}
+    for(const b of root.querySelectorAll('[data-check]'))b.checked=!!p.checked[b.dataset.check];summary();status('Vérification enregistrée sur cet appareil.');
+  });
+  $('#category-changed').onclick=()=>safe(async()=>{const next=checkPreparation(p,'category',false);await store.put(next);p=next;for(const b of root.querySelectorAll('[data-check]'))b.checked=!!p.checked[b.dataset.check];summary();status('Catégorie, champs supplémentaires, marque, état et colis à revérifier.');});
+  $('#share-photos').onclick=()=>safe(async()=>{
+    if(!navigator.canShare?.({files}) || !navigator.share) {status('Partage multiple indisponible ici. Utilisez le ZIP ou les liens photo individuels.');return;}
+    try {await navigator.share({files});status('Partage fermé. Vérifiez que les images sont enregistrées avant de les sélectionner dans Vinted.');}
+    catch(e){if(e.name==='AbortError'){status('Partage annulé. Les photos restent disponibles ici.');return;}throw e;}
+  });
+  await renderPhotos($('#prep-photos'),files);
+  files.forEach((f,i)=>{const a=document.createElement('a'),u=URL.createObjectURL(f);preparationURLs.push(u);a.href=u;a.download=f.name;a.textContent=`Enregistrer la photo ${i+1}`;$('#prep-photos').append(a);});
+  bind('#prep-back',async()=>preview(p.sourceId));
+  bind('#clear-prep',async()=>{if(confirm('Effacer la préparation locale ? Les produits et les photos du catalogue restent conservés.')){await store.clear();await home();status('Préparation effacée, catalogue conservé.');}});
+  status('Préparation locale enregistrée. Collage, choix et ajout des photos manuels dans Vinted.');
+}
 
 })();

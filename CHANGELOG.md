@@ -1,5 +1,14 @@
 # Historique
 
+## 3.2.0 — 16 novembre 2026
+
+- Sélection exacte de catégorie avec chemin hiérarchique, radio effectif, confirmation Fait et vérification de la valeur finale.
+- Marque et état : lecture des titres imbriqués et contrôle après fermeture, sans substitution arbitraire.
+- Prix canonique à point, validation des formats FR/ES et vérification numérique après formatage.
+- Colis : clic sur le contrôle accessible puis vérification du radio réellement coché, même masqué.
+- Bouton Orion compact replié au démarrage, marges safe-area iOS et panneau développable.
+- Tests des états effectifs et des variantes mobile/desktop, stockage et injection photo inchangés.
+
 ## 3.1.0 — 16 novembre 2026
 
 - Préremplissage expérimental ciblant le vrai formulaire vinted.es, avec transfert local GM entre origines.

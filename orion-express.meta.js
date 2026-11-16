@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name Orion Express
 // @namespace https://github.com/TheoRuffin/orion-express
-// @version 3.1.0
+// @version 3.2.0
 // @description Catalogue local et préremplissage expérimental Vinted Espagne, sans publication.
 // @match https://example.com/*
 // @run-at document-end

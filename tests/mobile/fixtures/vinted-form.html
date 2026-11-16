@@ -1,0 +1,22 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>[hidden]{display:none!important}body{font:16px sans-serif}input,textarea,button{font:inherit;padding:10px}input[type=radio]{width:18px;height:18px}[role=dialog]{position:fixed;inset:5%;background:#fff;border:2px solid #777;padding:15px;overflow:auto;z-index:10}</style>
+<h1>FORMULAIRE CONTRÔLÉ · VINTED NON RÉEL</h1>
+<form onsubmit="event.preventDefault();window.submitted=true">
+<label for="title">Titre</label><input id="title"><label for="description">Description</label><textarea id="description"></textarea><label for="price">Prix</label><input id="price" value="0,00">
+<button type="button" id="category" aria-expanded="false" onclick="openChoice('category')">Catégorie</button>
+<div id="dependent" hidden><button type="button" id="brand" aria-expanded="false" onclick="openChoice('brand')">Marque</button><button type="button" id="condition" aria-expanded="false" onclick="openChoice('condition')">État</button></div>
+<button type="button" id="package-size-1" onclick="parcel(1)">Petit</button><input id="package_type_selector_1" type="radio" hidden>
+<button type="button" id="package-size-2" onclick="parcel(2)">Moyen</button><input id="package_type_selector_2" type="radio" hidden checked>
+<button type="button" id="package-size-3" onclick="parcel(3)">Grand</button><input id="package_type_selector_3" type="radio" hidden>
+<input type="file" multiple><button>Ajouter</button><button>Publier</button></form>
+<div role="dialog" id="popup" hidden><div id="options"></div><button type="button" id="done" onclick="finishChoice()">Fait</button></div>
+<script>
+window.state={category:'',brand:'',condition:'',shipping:2,price:0};window.changes=0;window.confirmations=[];
+document.querySelector('input[type=file]').addEventListener('change',()=>window.changes++);
+const price=document.querySelector('#price');price.addEventListener('input',()=>{state.price=Number(price.value);if(!Number.isFinite(state.price))price.value='NaN €';});price.addEventListener('blur',()=>setTimeout(()=>{price.value=Number.isFinite(state.price)?state.price.toFixed(2).replace('.',',')+'\u00a0€':'NaN €';},80));
+const choices={category:[['Jeux de société','Loisirs'],['Jeux de société','Enfants > Jeux et jouets'],['Jeux de société junior','Loisirs']],brand:[['Sans marque',''],['Autre marque','']],condition:[['Très bon état','Article très peu utilisé, de légères imperfections.'],['Bon état','Article porté quelques fois.']]};
+let active,pending;
+function openChoice(id){active=id;pending=null;document.getElementById(id).setAttribute('aria-expanded','true');popup.hidden=false;options.innerHTML='';if(id!=='condition'){const search=document.createElement('input');search.id=id==='category'?'catalog-search-input':id+'-search-input';options.append(search);}setTimeout(()=>{for(const [i,item]of choices[id].entries()){const row=document.createElement('div');row.id=id+'-result-'+i;row.setAttribute('role','radio');row.setAttribute('aria-checked','false');row.innerHTML='<div><div><div class="web_ui__Cell__title">'+item[0]+'</div></div><div class="web_ui__Cell__body">'+item[1]+'</div></div><label for="radio-'+id+'-'+i+'"><input id="radio-'+id+'-'+i+'" type="radio"></label>';row.addEventListener('click',()=>{for(const el of options.querySelectorAll('[role=radio]')){el.setAttribute('aria-checked','false');el.querySelector('input').checked=false;}row.setAttribute('aria-checked','true');row.querySelector('input').checked=true;pending=item;if(window.desktop)finishChoice();});options.append(row);}},120);}
+function finishChoice(){if(!pending)return;state[active]=pending[0];if(active==='category')state.categoryPath=pending[1];document.getElementById(active).textContent=pending[0];document.getElementById(active).setAttribute('aria-expanded','false');confirmations.push(active);popup.hidden=true;if(active==='category')setTimeout(()=>dependent.hidden=false,150);}
+function parcel(n){state.shipping=n;for(let i=1;i<=3;i++)document.getElementById('package_type_selector_'+i).checked=i===n;}
+</script>

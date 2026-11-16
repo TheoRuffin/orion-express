@@ -43,50 +43,109 @@ export function uniqueField(doc,id,tag='INPUT') {
 async function waitFor(find,ms=2500) {
   const end=Date.now()+ms;while(Date.now()<end){const result=find();if(result)return result;await new Promise(r=>setTimeout(r,100));}throw new Error('Composant Vinted non reconnu ou trop lent. Choisissez cette valeur manuellement.');
 }
-const fold=s=>String(s).normalize('NFD').replace(/\p{Diacritic}/gu,'').trim().toLowerCase();
+const fold=s=>String(s).normalize('NFD').replace(/\p{Diacritic}/gu,'').replace(/\s+/g,' ').trim().toLowerCase();
+export function parseVintedPrice(raw) {
+  if(typeof raw==='number') {if(!Number.isFinite(raw)||raw<0||!Number.isSafeInteger(Math.round(raw*100))||Math.abs(raw*100-Math.round(raw*100))>0.000001)throw new Error('Prix invalide.');return raw;}
+  if(typeof raw!=='string')throw new Error('Prix invalide.');
+  const text=raw.trim().replace(/\s*€$/,'').trim();
+  if(!/^\d+(?:[.,]\d{1,2})?$/.test(text))throw new Error('Prix invalide : utilisez par exemple 10, 10.00, 10,00 ou 10 €.');
+  return parseVintedPrice(Number(text.replace(',','.')));
+}
+export async function setVintedPrice(doc,raw) {
+  const amount=parseVintedPrice(raw); // validate before touching the DOM
+  const el=await waitFor(()=>{try{return uniqueField(doc,'price');}catch{return null;}},4500);
+  const previous=el.value;
+  const existing=(()=>{try{return parseVintedPrice(previous);}catch{return null;}})();
+  if(existing!==null && existing!==0 && existing!==amount)throw new Error('Le prix contient déjà une autre valeur ; aucun écrasement.');
+  el.focus();setNativeValue(el,amount.toFixed(2));
+  await waitFor(()=>{try{return parseVintedPrice(el.value)===amount;}catch{return false;}},4500);
+  // Allow a delayed formatting/controlled-state update, then check again.
+  await new Promise(r=>setTimeout(r,250));
+  if(parseVintedPrice(el.value)!==amount)throw new Error('Prix non conservé après formatage.');
+  return `Prix vérifié : ${amount.toFixed(2)} €`;
+}
+const isVintedSelected=e=>!!e && (e.checked===true || e.getAttribute('aria-checked')==='true' || !!e.querySelector('input[type=radio]:checked'));
+const selectedText=e=>e?.querySelector('[data-testid$="--value"]')?.textContent ?? (e?.matches('input,select')?e.value:e?.textContent) ?? '';
+function parts(value){return String(value).split(/\s*(?:>|›)\s*/).map(v=>v.trim()).filter(Boolean);}
+function optionInfo(el,target) {
+  const leaves=[...el.querySelectorAll('div,span,label')].filter(n=>fold(n.textContent)===fold(target));
+  const matches=fold(el.textContent)===fold(target) || leaves.length>0 || fold(el.getAttribute('aria-label'))===fold(target);
+  if(!matches)return null;
+  const title=el.querySelector('[data-testid$="--title"],[class*="Cell__title"]')?.textContent || target;
+  if(fold(title)!==fold(target))return null;
+  const body=el.querySelector('[class*="Cell__body"],[data-orion-path]')?.textContent || String(el.textContent).trim().slice(String(title).trim().length).trim();
+  return {el,title:String(title).trim(),path:parts(body)};
+}
+function popupFor(doc,trigger,option) {
+  const owned=doc.getElementById(trigger.getAttribute('aria-controls') || '');
+  return owned || option?.closest('[role=dialog],[role=menu],[role=listbox],[data-radix-popper-content-wrapper]') || [...doc.querySelectorAll('[role=dialog],[role=menu],[role=listbox],[data-radix-popper-content-wrapper]')].filter(visible).at(-1);
+}
 export async function selectVintedChoice(doc,id,value) {
-  if(!value)throw new Error('Valeur manquante dans la fiche.');
-  const triggers=[...doc.querySelectorAll(`[id="${id}"]`)].filter(visible);
-  if(triggers.length!==1)throw new Error(`Sélecteur ${id} absent ou ambigu.`);
-  const trigger=triggers[0];
-  const target=value.split('>').at(-1).trim();
-  if(fold(trigger.textContent)===fold(value) || fold(trigger.value??'')===fold(value))return;
-  trigger.click();
-  try{
+  const path=parts(value);if(!path.length)throw new Error('Valeur manquante dans la fiche.');const target=path.at(-1);
+  const trigger=await waitFor(()=>{const list=[...doc.querySelectorAll(`[id="${id}"]`)].filter(visible);return list.length===1?list[0]:null;},4500);
+  if(fold(selectedText(trigger))===fold(target) && path.length===1 && trigger.getAttribute('aria-expanded')!=='true')return `Sélection vérifiée : ${target}`;
+  if(trigger.getAttribute('aria-expanded')!=='true')trigger.click();
+  try {
     const search=await waitFor(()=>{
-      if(id==='category')return [...doc.querySelectorAll('#catalog-search-input')].find(visible);
-      const owned=doc.getElementById(trigger.getAttribute('aria-controls') || '');
-      const popup=owned || [...doc.querySelectorAll('[role=dialog],[role=listbox],[data-radix-popper-content-wrapper]')].filter(visible).at(-1);
-      return popup && [...popup.querySelectorAll('input')].find(e=>visible(e) && /search/i.test(e.id+e.getAttribute('placeholder')));
-    },700).catch(()=>null);
-    if(search)setNativeValue(search,value.split('>').at(-1).trim());
-    const option=await waitFor(()=>{
-      const nodes=[...doc.querySelectorAll('[role="option"],[role="radio"],button[id^="catalog-"],button[id^="brand-"],[data-testid*="condition"]')].filter(visible);
-      const matches=nodes.filter(e=>fold(e.textContent)===fold(target) || [...e.children].some(c=>fold(c.textContent)===fold(target)));
-      return matches.length===1?matches[0]:null;
-    });option.click();
-  }catch(e){doc.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));throw e;}
+      const exact=doc.getElementById(id==='category'?'catalog-search-input':`${id}-search-input`);
+      if(visible(exact))return exact;
+      const popup=popupFor(doc,trigger);return popup && [...popup.querySelectorAll('input')].find(e=>visible(e) && /search/i.test(e.id+e.getAttribute('placeholder')));
+    },id==='condition'?500:1800).catch(()=>null);
+    if(search)setNativeValue(search,target);
+    let chosen;
+    await waitFor(()=>{
+      const scope=popupFor(doc,trigger) || doc;
+      const nodes=[...scope.querySelectorAll('[role=option],[role=radio]')].filter(visible);
+      const matches=nodes.map(el=>optionInfo(el,target)).filter(Boolean).filter(info=>id!=='category' || path.length===1 || fold(info.path.join(' > '))===fold(path.slice(0,-1).join(' > ')));
+      if(matches.length!==1)return null;chosen=matches[0];return chosen;
+    },4500);
+    const choice=chosen.el;
+    {
+      const radio=choice.matches('input[type=radio]')?choice:choice.querySelector('input[type=radio]');
+      // Mobile bottom sheets may bind selection to the nested radio/label.
+      const label=radio && [...choice.querySelectorAll('label')].find(l=>l.htmlFor===radio.id);
+      (visible(radio)?radio:visible(label)?label:choice).click();
+    }
+    const closed=()=>trigger.getAttribute('aria-expanded')!=='true' && fold(selectedText(doc.getElementById(id)))===fold(target) && (!choice.isConnected || !visible(choice));
+    await waitFor(()=>isVintedSelected(choice)||closed(),3500);
+    // Only exact confirmation labels; never Add/Publish/Save draft.
+    const confirm=await waitFor(()=>{
+      if(closed())return {closed:true};
+      const scope=popupFor(doc,trigger,choice) || doc;
+      const buttons=[...scope.querySelectorAll('button')].filter(e=>visible(e) && ['fait','listo','hecho','done'].includes(fold(e.textContent)));
+      if(buttons.length===1)return {button:buttons[0]};return null;
+    },2500);
+    if(confirm.button){if(!isVintedSelected(choice))throw new Error('Option non sélectionnée : confirmation annulée.');confirm.button.click();}
+    await waitFor(()=>fold(selectedText(doc.getElementById(id)))===fold(target) && doc.getElementById(id)?.getAttribute('aria-expanded')!=='true' && (!choice.isConnected || !visible(choice)),4500);
+    return `Sélection vérifiée : ${chosen.title}${id==='category' && chosen.path.length?' ('+chosen.path.join(' > ')+')':''}`;
+  }catch(e){throw new Error(`${id} : ${errorMessage(e)}`);}
+}
+export async function selectVintedShipping(doc,value) {
+  const aliases={petit:1,pequeno:1,small:1,moyen:2,mediano:2,medium:2,grand:3,grande:3,large:3};const size=aliases[fold(value)];
+  if(!size)throw new Error('Format du colis non reconnu ou manquant dans la fiche.');
+  const radio=await waitFor(()=>doc.getElementById(`package_type_selector_${size}`),4500);
+  if(!isVintedSelected(radio)) {
+    const button=doc.getElementById(`package-size-${size}`);
+    const label=[...doc.querySelectorAll('label')].find(l=>l.htmlFor===radio.id);
+    const control=[button,label,radio].find(visible);if(!control)throw new Error('Choix du colis non accessible.');control.click();
+  }
+  await waitFor(()=>isVintedSelected(doc.getElementById(`package_type_selector_${size}`)),3500);
+  return `Colis vérifié : ${value}`;
 }
 export async function applyVintedProduct(doc,product,report,{photos=true}={}) {
   const hadContent=['title','description'].some(id=>String(doc.getElementById(id)?.value || '').trim());
-  const results={};const attempt=async(key,fn)=>{try{await fn();results[key]='À vérifier dans Vinted';}catch(e){results[key]='Manuel : '+errorMessage(e);}report({...results});};
+  const results={};const attempt=async(key,fn)=>{try{const message=await fn();results[key]=message || 'À vérifier dans Vinted';}catch(e){results[key]='Manuel : '+errorMessage(e);}report({...results});};
   // Text first: no submit, no buttons selected by generic text such as "Ajouter".
-  for(const key of ['title','description','price'])await attempt(key,async()=>{
+  for(const key of ['title','description'])await attempt(key,async()=>{
     const el=uniqueField(doc,key,key==='description'?'TEXTAREA':'INPUT');
-    const value=key==='price'?product.price.toFixed(2).replace('.',','):product[key];
+    const value=product[key];
     if(el.value && el.value!==String(value) && !(key==='price' && Number(el.value.replace('€','').replace(',','.').trim())===0))throw new Error('Ce champ contient déjà une autre valeur ; aucun écrasement.');
     setNativeValue(el,value);if(el.value!==String(value))throw new Error('Valeur non conservée par le formulaire.');
   });
+  await attempt('price',()=>setVintedPrice(doc,product.price));
   await attempt('category',()=>selectVintedChoice(doc,'category',product.category));
-  for(const key of ['brand','condition'])await attempt(key,()=>{if(results.category?.startsWith('Manuel'))throw new Error('Choisissez la catégorie avant ce champ.');return selectVintedChoice(doc,key,product[key]);});
-  await attempt('shipping',async()=>{
-    const aliases={petit:1,pequeno:1,small:1,moyen:2,mediano:2,medium:2,grand:3,grande:3,large:3};const size=aliases[fold(product.shipping)];
-    if(!size)throw new Error('Format du colis non reconnu.');
-    const radios=[...doc.querySelectorAll('[id^="package_type_selector_"]')].filter(visible);const checked=radios.find(e=>e.checked);
-    // Product selection explicitly requests this parcel size, including replacing a suggested default.
-    if(checked?.id===`package_type_selector_${size}`)return;
-    const radio=doc.getElementById(`package_type_selector_${size}`);if(!visible(radio))throw new Error('Choix du colis non reconnu.');radio.click();
-  });
+  for(const key of ['brand','condition'])await attempt(key,()=>{if(results.category?.startsWith('Manuel'))throw new Error('Choisissez et confirmez la catégorie avant ce champ.');return selectVintedChoice(doc,key,product[key]);});
+  await attempt('shipping',()=>selectVintedShipping(doc,product.shipping));
   if(photos)await attempt('photos',async()=>{
     if(hadContent)throw new Error('Le formulaire contenait déjà du texte : ajout automatique de photos désactivé pour éviter les doublons.');
     const inputs=[...doc.querySelectorAll('input[type=file]')].filter(e=>!e.disabled && e.multiple);

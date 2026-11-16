@@ -81,6 +81,7 @@ function popupFor(doc,trigger,option) {
   return owned || option?.closest('[role=dialog],[role=menu],[role=listbox],[data-radix-popper-content-wrapper]') || [...doc.querySelectorAll('[role=dialog],[role=menu],[role=listbox],[data-radix-popper-content-wrapper]')].filter(visible).at(-1);
 }
 export async function selectVintedChoice(doc,id,value) {
+  if(id==='condition')return selectVintedCondition(doc,value);
   const path=parts(value);if(!path.length)throw new Error('Valeur manquante dans la fiche.');const target=path.at(-1);
   const trigger=await waitFor(()=>{const list=[...doc.querySelectorAll(`[id="${id}"]`)].filter(visible);return list.length===1?list[0]:null;},4500);
   if(fold(selectedText(trigger))===fold(target) && path.length===1 && trigger.getAttribute('aria-expanded')!=='true')return `Sélection vérifiée : ${target}`;

@@ -2,6 +2,12 @@
 let orionLanguage='es';
 const LANGUAGE_KEY='orion-express-language';
 const ES={
+'Choisir un état précis':'Elegir un estado preciso',
+'Neuf avec étiquette':'Nuevo con etiquetas','Neuf sans étiquette':'Nuevo sin etiquetas','Très bon état':'Muy bueno','Bon état':'Bueno','Satisfaisant':'Satisfactorio',
+'État ambigu : choisissez Neuf avec étiquette ou Neuf sans étiquette dans la fiche produit.':'Estado ambiguo: elige Nuevo con etiquetas o Nuevo sin etiquetas en la ficha del producto.',
+'État absent ou non reconnu : choisissez un état précis dans la fiche produit.':'Estado ausente o no reconocido: elige un estado preciso en la ficha del producto.',
+'État non coché : confirmation annulée.':'Estado no seleccionado: confirmación cancelada.',
+
 'VOTRE ATELIER DE VENTE · V3':'TU TALLER DE VENTAS · V3',
 'Local · example.com · aucune synchronisation':'Local · example.com · sin sincronización',
 'Les données du navigateur ne sont pas une sauvegarde. Exportez vers Fichiers régulièrement.':'Los datos del navegador no son una copia de seguridad. Exporta a Archivos con frecuencia.',
@@ -128,6 +134,8 @@ function translateOrion(source) {
   const labels={'Titre / Título':'Título','Description / Descripción':'Descripción','Prix / Precio':'Precio','Catégorie / Categoría':'Categoría','Marque / Marca':'Marca','État / Estado':'Estado','Colis / Tamaño del paquete':'Tamaño del paquete'};
   if(labels[trim])return render(labels[trim]);
   const patterns=[
+    [/^État actuel à préciser : (.*)$/s,(_,v)=>`Estado actual por precisar: ${v}`],
+    [/^État vérifié : (.*)$/s,(_,v)=>`Estado verificado: ${v}`],
     [/^Enregistrer la photo (\d+)$/s,(_,n)=>`Guardar foto ${n}`],
     [/^1 · Vos (\d+) photo\(s\)$/s,(_,n)=>`1 · Tus ${n} foto(s)`],
     [/^(\d+) en stock$/s,(_,n)=>`${n} en stock`],
@@ -146,7 +154,7 @@ function translateOrion(source) {
     [/^Colis vérifié : (.*)$/s,(_,v)=>`Paquete verificado: ${v}`],
     [/^Manuel : (.*)$/s,(_,v)=>`Manual: ${translateOrion(v)}`],
     [/^(category|brand|condition) : (.*)$/s,(_,k,v)=>`${{category:'Categoría',brand:'Marca',condition:'Estado'}[k]}: ${translateOrion(v)}`],
-    [/^(.*?) : (Manuel : .*|À vérifier dans Vinted|Prix vérifié : .*|Sélection vérifiée : .*|Colis vérifié : .*)$/s,(_,k,v)=>`${translateOrion(k)}: ${translateOrion(v)}`],
+    [/^(.*?) : (Manuel : .*|À vérifier dans Vinted|Prix vérifié : .*|Sélection vérifiée : .*|Colis vérifié : .*|État vérifié : .*)$/s,(_,k,v)=>`${translateOrion(k)}: ${translateOrion(v)}`],
     [/^Photo (\d+)(.*)$/s,(_,n,end)=>`Foto ${n}${end}`]
   ];
   for(const [regex,fn]of patterns)if(regex.test(trim))return render(trim.replace(regex,fn));

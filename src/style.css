@@ -5,3 +5,5 @@
 
 .shell.mini>[data-orion-languages]{display:none!important}
 [hidden]{display:none!important}
+
+#product-condition{display:block;width:100%;margin:8px 0 18px;padding:14px;border:1px solid #bdcbc3;border-radius:12px;background:white;color:#172b35;font:16px -apple-system,sans-serif}

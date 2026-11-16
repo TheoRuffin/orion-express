@@ -1,5 +1,13 @@
 # Historique
 
+## 3.2.2 — 16 novembre 2026
+
+- Correctif ciblé de l’état : correspondances explicites FR/ES, cellule sémantique, radio effectif et confirmation Fait active.
+- Vérification de la fermeture réelle du menu et de l’état principal, sans faux succès.
+- Liste d’états précis dans la fiche ; Neuf/Nuevo ambigu n’est jamais choisi arbitrairement.
+- Conservation des anciennes valeurs tant qu’aucun changement n’est demandé.
+- Photos, stockage et autres branches de préremplissage inchangés ; ES/FR et bouton compact conservés.
+
 ## 3.2.1 — 16 novembre 2026
 
 - Espagnol par défaut dans le catalogue, les formulaires, confirmations, erreurs et le panneau Orion sur Vinted.

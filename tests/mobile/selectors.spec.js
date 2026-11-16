@@ -1,7 +1,7 @@
 import {test,expect} from './fixture.js';
 import {readFile} from 'node:fs/promises';
 const html=await readFile('tests/mobile/fixtures/vinted-form.html','utf8');
-const adapter=(await readFile('src/vinted-adapter.js','utf8')).replace(/^export /gm,'');
+const adapter=(await readFile('src/vinted-adapter.js','utf8')).replace(/^export /gm,'')+'\n'+(await readFile('src/condition.js','utf8')).replace(/^export /gm,'');
 async function init(page){await page.route('https://www.vinted.es/**',r=>r.fulfill({contentType:'text/html',body:html}));await page.goto('https://www.vinted.es/items/new');await page.addScriptTag({content:`(()=>{const errorMessage=e=>e.message;${adapter};window.adapterTest={setVintedPrice,selectVintedChoice,selectVintedShipping};})();`});}
 test('prix canonique formaté : 10 €, NaN récupérable, entrée invalide sans mutation',async({page})=>{
  await init(page);await page.evaluate(()=>adapterTest.setVintedPrice(document,'10 €'));await expect(page.locator('#price')).toHaveValue('10,00 €');

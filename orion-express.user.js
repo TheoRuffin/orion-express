@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name Orion Express
 // @namespace https://github.com/TheoRuffin/orion-express
-// @version 3.2.1
+// @version 3.2.2
 // @description Catálogo local y rellenado experimental en Vinted España, sin publicar.
 // @description:fr Catalogue local et préremplissage expérimental Vinted Espagne, sans publication.
 // @match https://example.com/*
@@ -24,6 +24,12 @@
 let orionLanguage='es';
 const LANGUAGE_KEY='orion-express-language';
 const ES={
+'Choisir un état précis':'Elegir un estado preciso',
+'Neuf avec étiquette':'Nuevo con etiquetas','Neuf sans étiquette':'Nuevo sin etiquetas','Très bon état':'Muy bueno','Bon état':'Bueno','Satisfaisant':'Satisfactorio',
+'État ambigu : choisissez Neuf avec étiquette ou Neuf sans étiquette dans la fiche produit.':'Estado ambiguo: elige Nuevo con etiquetas o Nuevo sin etiquetas en la ficha del producto.',
+'État absent ou non reconnu : choisissez un état précis dans la fiche produit.':'Estado ausente o no reconocido: elige un estado preciso en la ficha del producto.',
+'État non coché : confirmation annulée.':'Estado no seleccionado: confirmación cancelada.',
+
 'VOTRE ATELIER DE VENTE · V3':'TU TALLER DE VENTAS · V3',
 'Local · example.com · aucune synchronisation':'Local · example.com · sin sincronización',
 'Les données du navigateur ne sont pas une sauvegarde. Exportez vers Fichiers régulièrement.':'Los datos del navegador no son una copia de seguridad. Exporta a Archivos con frecuencia.',
@@ -150,6 +156,8 @@ function translateOrion(source) {
   const labels={'Titre / Título':'Título','Description / Descripción':'Descripción','Prix / Precio':'Precio','Catégorie / Categoría':'Categoría','Marque / Marca':'Marca','État / Estado':'Estado','Colis / Tamaño del paquete':'Tamaño del paquete'};
   if(labels[trim])return render(labels[trim]);
   const patterns=[
+    [/^État actuel à préciser : (.*)$/s,(_,v)=>`Estado actual por precisar: ${v}`],
+    [/^État vérifié : (.*)$/s,(_,v)=>`Estado verificado: ${v}`],
     [/^Enregistrer la photo (\d+)$/s,(_,n)=>`Guardar foto ${n}`],
     [/^1 · Vos (\d+) photo\(s\)$/s,(_,n)=>`1 · Tus ${n} foto(s)`],
     [/^(\d+) en stock$/s,(_,n)=>`${n} en stock`],
@@ -168,7 +176,7 @@ function translateOrion(source) {
     [/^Colis vérifié : (.*)$/s,(_,v)=>`Paquete verificado: ${v}`],
     [/^Manuel : (.*)$/s,(_,v)=>`Manual: ${translateOrion(v)}`],
     [/^(category|brand|condition) : (.*)$/s,(_,k,v)=>`${{category:'Categoría',brand:'Marca',condition:'Estado'}[k]}: ${translateOrion(v)}`],
-    [/^(.*?) : (Manuel : .*|À vérifier dans Vinted|Prix vérifié : .*|Sélection vérifiée : .*|Colis vérifié : .*)$/s,(_,k,v)=>`${translateOrion(k)}: ${translateOrion(v)}`],
+    [/^(.*?) : (Manuel : .*|À vérifier dans Vinted|Prix vérifié : .*|Sélection vérifiée : .*|Colis vérifié : .*|État vérifié : .*)$/s,(_,k,v)=>`${translateOrion(k)}: ${translateOrion(v)}`],
     [/^Photo (\d+)(.*)$/s,(_,n,end)=>`Foto ${n}${end}`]
   ];
   for(const [regex,fn]of patterns)if(regex.test(trim))return render(trim.replace(regex,fn));
@@ -542,6 +550,7 @@ function popupFor(doc,trigger,option) {
   return owned || option?.closest('[role=dialog],[role=menu],[role=listbox],[data-radix-popper-content-wrapper]') || [...doc.querySelectorAll('[role=dialog],[role=menu],[role=listbox],[data-radix-popper-content-wrapper]')].filter(visible).at(-1);
 }
 async function selectVintedChoice(doc,id,value) {
+  if(id==='condition')return selectVintedCondition(doc,value);
   const path=parts(value);if(!path.length)throw new Error('Valeur manquante dans la fiche.');const target=path.at(-1);
   const trigger=await waitFor(()=>{const list=[...doc.querySelectorAll(`[id="${id}"]`)].filter(visible);return list.length===1?list[0]:null;},4500);
   if(fold(selectedText(trigger))===fold(target) && path.length===1 && trigger.getAttribute('aria-expanded')!=='true')return `Sélection vérifiée : ${target}`;
@@ -618,7 +627,80 @@ async function applyVintedProduct(doc,product,report,{photos=true}={}) {
   results.dynamic='Manuel : vérifiez tous les champs supplémentaires de la catégorie';report({...results});return results;
 }
 
-const APP_CSS = ":host{all:initial;font:16px -apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;color:#172b35}*{box-sizing:border-box}.shell{height:100%;overflow:auto;background:#f6f5ef;padding:24px max(20px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));-webkit-overflow-scrolling:touch}header,header>div,.toolbar,.stats,.card,dl>div{display:flex;align-items:center}header{justify-content:space-between;max-width:900px;margin:auto}header>div{display:block}small{font-size:10px;letter-spacing:.14em;font-weight:700;color:#55716f}h1{font-size:28px;letter-spacing:-1px;margin:5px 0 12px}h1 em{font-family:Georgia,serif;font-weight:400;color:#087b67}h2{font-size:30px;line-height:1.12;letter-spacing:-.8px;margin:14px 0 22px}h3{font-size:18px;margin:10px 0}p{line-height:1.6}button,a,input,textarea{font:inherit}button,a{touch-action:manipulation}button{min-height:46px;padding:11px 16px;border:1px solid #cbd7cf;background:#fff;color:#172b35;border-radius:12px;font-weight:600;cursor:pointer}button:disabled{opacity:.5;cursor:default}button:focus-visible,input:focus-visible,textarea:focus-visible,a:focus-visible{outline:3px solid #dc9a2b;outline-offset:3px}.primary{background:#087b67;border-color:#087b67;color:white}.origin{font-size:11px;max-width:900px;margin:8px auto 14px;color:#55716f}.hero{padding:28px;border-radius:22px;background:#e4ede4;margin-bottom:18px}.stats{gap:24px;margin-bottom:24px;font-size:13px}.stats b{display:block;font-size:27px}.toolbar{gap:8px;flex-wrap:wrap;margin:16px 0}.toolbar button{flex:1}.search{margin:24px 0 16px}label{display:block;font-weight:600;font-size:13px;margin:18px 0 8px}input,textarea{display:block;width:100%;margin-top:8px;padding:14px;border:1px solid #bdcbc3;border-radius:12px;background:white;color:#172b35;font-size:16px}textarea{resize:vertical}main,footer,#status{max-width:900px;margin:auto}.cards{display:grid;gap:12px}.card{width:100%;text-align:left;gap:16px;padding:14px}.card>div:nth-child(2){flex:1;min-width:0;overflow-wrap:anywhere}.card h3{font-size:18px;margin:5px 0}.card span{font-weight:400;font-size:13px}.thumb{width:64px;height:76px;flex-shrink:0;border-radius:10px;background:#eeeade;overflow:hidden;display:grid;place-items:center;font-size:30px}.thumb .photo,.thumb img{width:100%;height:76px;object-fit:cover}.thumb p{font-size:10px}.photo{border-radius:12px;overflow:hidden;background:#eeeade;min-width:0}.photo img{width:100%;height:180px;object-fit:contain;display:block}.photo button{font-size:12px;padding:8px;min-height:44px}.photo p{padding:12px;font-size:12px}.photos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0}.hint,footer,.tip{font-size:12px;color:#55716f}.tip{border-top:1px solid #cbd7cf;margin-top:30px;padding-top:20px}.tip b{font-size:14px}.empty{padding:30px 18px;text-align:center;border:1px dashed #bdcbc3;border-radius:18px}.file{background:#e4ede4;border-radius:12px;padding:14px}.file input{font-size:13px;padding:8px}.save{position:sticky;bottom:8px;width:100%;margin-top:18px;box-shadow:0 5px 20px #172b3522}.price{font-size:28px;color:#087b67;font-weight:700}.description{white-space:pre-wrap;overflow-wrap:anywhere}dl>div{justify-content:space-between;border-bottom:1px solid #dce3dc;padding:12px 0;gap:12px}dt{font-size:13px;color:#55716f}dd{margin:0;overflow-wrap:anywhere;text-align:right}.danger{color:#a33030;border-color:#debcbc;margin:24px 0}.sales{padding-left:20px;line-height:1.8;font-size:13px}a{color:#087b67;display:inline-block;min-height:44px;padding:12px 0;overflow-wrap:anywhere}#status{font-size:13px;line-height:1.5;padding:10px 0;color:#087b67}#status.error{color:#a33030}footer{padding:28px 0 10px;line-height:1.7}article{padding-top:20px}#sale{display:flex;gap:10px;flex-wrap:wrap;align-items:end}#sale label{flex:1;min-width:100px}#sale button{margin-bottom:8px}@media(min-width:700px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{padding:40px}.hero h2{max-width:420px;font-size:44px}.photos{grid-template-columns:repeat(3,minmax(0,1fr))}form:not(#sale){max-width:650px}header{padding-top:12px}}@media(prefers-reduced-motion:no-preference){button{transition:background .15s}button:hover{filter:brightness(.97)}}\n\n.shell.mini{padding:6px 10px}.mini header small{display:none}.mini h1{font-size:18px;margin:0}.mini header{padding:0}.mini #minimize{min-height:44px}\n.prep-field{padding:16px 0;border-bottom:1px solid #cbd7cf}.check{display:flex;align-items:center;gap:12px;font-size:14px;line-height:1.5}.check input{width:24px;height:24px;flex-shrink:0;margin:0}.vinted-link{padding:14px 18px;border-radius:12px;text-decoration:none}#prep-summary{background:#e4ede4;padding:14px;border-radius:12px}#photo-zip{display:block}#resume-prep{margin-bottom:12px}\n\n.shell.mini>[data-orion-languages]{display:none!important}\n[hidden]{display:none!important}\n";
+// Explicit semantic mapping only. The product schema remains a string.
+const ORION_CONDITIONS=[
+ {key:'new_with_tags',fr:'Neuf avec étiquette',es:'Nuevo con etiquetas',aliases:['Neuf avec étiquettes','Nuevo con etiqueta','New with tags']},
+ {key:'new_without_tags',fr:'Neuf sans étiquette',es:'Nuevo sin etiquetas',aliases:['Neuf sans étiquettes','Nuevo sin etiqueta','New without tags']},
+ {key:'very_good',fr:'Très bon état',es:'Muy bueno',aliases:['Muy buen estado','Very good']},
+ {key:'good',fr:'Bon état',es:'Bueno',aliases:['Buen estado','Good']},
+ {key:'fair',fr:'Satisfaisant',es:'Satisfactorio',aliases:['Aceptable','Fair']}
+];
+const conditionKey=value=>String(value??'').normalize('NFD').replace(/\p{Diacritic}/gu,'').replace(/\s+/g,' ').trim().toLowerCase();
+function resolveOrionCondition(value){
+ const text=conditionKey(value);
+ if(['neuf','nuevo','new'].includes(text))throw new Error('État ambigu : choisissez Neuf avec étiquette ou Neuf sans étiquette dans la fiche produit.');
+ const match=ORION_CONDITIONS.find(c=>[c.key,c.fr,c.es,...c.aliases].some(v=>conditionKey(v)===text));
+ if(!match)throw new Error('État absent ou non reconnu : choisissez un état précis dans la fiche produit.');return match;
+}
+function conditionEditorChoices(current=''){
+ let known;try{known=resolveOrionCondition(current);}catch{}
+ return [
+ {value:'',label:'Choisir un état précis',selected:!current},
+ ...(current&&!known?[{value:String(current),label:`État actuel à préciser : ${current}`,selected:true}]:[]),
+ ...ORION_CONDITIONS.map(c=>({value:known?.key===c.key?String(current):c.fr,label:c.fr,selected:known?.key===c.key}))
+ ];
+}
+function conditionOfCell(cell){
+ const explicit=cell.querySelector('[data-testid$="--title"],[class*="Cell__title"]');
+ const title=explicit?.textContent || cell.getAttribute('aria-label') || cell.textContent;
+ // A description appended to a condition is not an alias. Inspect exact nested labels.
+ const candidates=explicit?[title]:[title,...[...cell.querySelectorAll('span,div,label')].map(e=>e.textContent)];
+ const matches=new Map();for(const label of candidates){try{const c=resolveOrionCondition(label);matches.set(c.key,c);}catch{}}
+ return matches.size===1?[...matches.values()][0]:null;
+}
+const conditionSelected=cell=>{
+ if(!cell)return false;
+ // aria-checked on the component is authoritative; native checked alone may be a DOM-only change.
+ if(cell.hasAttribute('aria-checked')){const input=cell.querySelector('input[type=radio]');return cell.getAttribute('aria-checked')==='true' && (!input || input.checked);}
+ return cell.matches('input[type=radio]')?cell.checked:!!cell.querySelector('input[type=radio]:checked');
+};
+async function selectVintedCondition(doc,value){
+ const desired=resolveOrionCondition(value); // Reject "Neuf" before opening the menu.
+ const trigger=await waitFor(()=>{const list=[...doc.querySelectorAll('[id="condition"]')].filter(visible);return list.length===1?list[0]:null;},4500);
+ const currentMatches=()=>{try{return resolveOrionCondition(selectedText(doc.getElementById('condition'))).key===desired.key;}catch{return false;}};
+ const menuAlreadyVisible=()=>{const scope=popupFor(doc,trigger);return scope && visible(scope) && [...scope.querySelectorAll('[role=radio],[role=option]')].some(cell=>visible(cell)&&conditionOfCell(cell));};
+ if(currentMatches() && trigger.getAttribute('aria-expanded')!=='true' && !menuAlreadyVisible())return `État vérifié : ${selectedText(trigger)}`;
+ if(trigger.getAttribute('aria-expanded')!=='true')trigger.click();
+ let chosen;
+ const findCell=()=>{
+   const scope=popupFor(doc,trigger) || doc;
+   const matches=[...scope.querySelectorAll('[role=radio],[role=option]')].filter(visible).filter(cell=>conditionOfCell(cell)?.key===desired.key);
+   return matches.length===1?matches[0]:null;
+ };
+ chosen=await waitFor(findCell,4500);
+ const menuRoot=popupFor(doc,trigger,chosen);
+ // Click the actual semantic cell, not a nested radio whose DOM checked state can bypass the component.
+ chosen.click();
+ const closed=()=>currentMatches() && doc.getElementById('condition')?.getAttribute('aria-expanded')!=='true' && (!findCell()) && (!menuRoot || !menuRoot.isConnected || !visible(menuRoot));
+ // Some mobile variants bind only the native radio's change handler. Retry that same precise option once.
+ try{await waitFor(()=>conditionSelected(findCell()) || closed(),500);}catch{const cell=findCell();const input=cell?.matches('input[type=radio]')?cell:cell?.querySelector('input[type=radio]');if(input && !input.disabled)input.click();}
+ await waitFor(()=>conditionSelected(findCell()) || closed(),3500);
+ const action=await waitFor(()=>{
+   if(closed())return {closed:true};
+   const cell=findCell();if(!conditionSelected(cell))return null;
+   const scope=popupFor(doc,trigger,cell) || doc;
+   const buttons=[...scope.querySelectorAll('button')].filter(b=>visible(b) && b.getAttribute('aria-disabled')!=='true' && ['fait','listo','hecho','done'].includes(fold(b.textContent)));
+   return buttons.length===1?{button:buttons[0]}:null;
+ },4500);
+ if(action.button){
+   if(!conditionSelected(findCell()))throw new Error('État non coché : confirmation annulée.');
+   action.button.click();
+ }
+ await waitFor(closed,4500);
+ return `État vérifié : ${selectedText(doc.getElementById('condition'))}`;
+}
+
+const APP_CSS = ":host{all:initial;font:16px -apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;color:#172b35}*{box-sizing:border-box}.shell{height:100%;overflow:auto;background:#f6f5ef;padding:24px max(20px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));-webkit-overflow-scrolling:touch}header,header>div,.toolbar,.stats,.card,dl>div{display:flex;align-items:center}header{justify-content:space-between;max-width:900px;margin:auto}header>div{display:block}small{font-size:10px;letter-spacing:.14em;font-weight:700;color:#55716f}h1{font-size:28px;letter-spacing:-1px;margin:5px 0 12px}h1 em{font-family:Georgia,serif;font-weight:400;color:#087b67}h2{font-size:30px;line-height:1.12;letter-spacing:-.8px;margin:14px 0 22px}h3{font-size:18px;margin:10px 0}p{line-height:1.6}button,a,input,textarea{font:inherit}button,a{touch-action:manipulation}button{min-height:46px;padding:11px 16px;border:1px solid #cbd7cf;background:#fff;color:#172b35;border-radius:12px;font-weight:600;cursor:pointer}button:disabled{opacity:.5;cursor:default}button:focus-visible,input:focus-visible,textarea:focus-visible,a:focus-visible{outline:3px solid #dc9a2b;outline-offset:3px}.primary{background:#087b67;border-color:#087b67;color:white}.origin{font-size:11px;max-width:900px;margin:8px auto 14px;color:#55716f}.hero{padding:28px;border-radius:22px;background:#e4ede4;margin-bottom:18px}.stats{gap:24px;margin-bottom:24px;font-size:13px}.stats b{display:block;font-size:27px}.toolbar{gap:8px;flex-wrap:wrap;margin:16px 0}.toolbar button{flex:1}.search{margin:24px 0 16px}label{display:block;font-weight:600;font-size:13px;margin:18px 0 8px}input,textarea{display:block;width:100%;margin-top:8px;padding:14px;border:1px solid #bdcbc3;border-radius:12px;background:white;color:#172b35;font-size:16px}textarea{resize:vertical}main,footer,#status{max-width:900px;margin:auto}.cards{display:grid;gap:12px}.card{width:100%;text-align:left;gap:16px;padding:14px}.card>div:nth-child(2){flex:1;min-width:0;overflow-wrap:anywhere}.card h3{font-size:18px;margin:5px 0}.card span{font-weight:400;font-size:13px}.thumb{width:64px;height:76px;flex-shrink:0;border-radius:10px;background:#eeeade;overflow:hidden;display:grid;place-items:center;font-size:30px}.thumb .photo,.thumb img{width:100%;height:76px;object-fit:cover}.thumb p{font-size:10px}.photo{border-radius:12px;overflow:hidden;background:#eeeade;min-width:0}.photo img{width:100%;height:180px;object-fit:contain;display:block}.photo button{font-size:12px;padding:8px;min-height:44px}.photo p{padding:12px;font-size:12px}.photos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0}.hint,footer,.tip{font-size:12px;color:#55716f}.tip{border-top:1px solid #cbd7cf;margin-top:30px;padding-top:20px}.tip b{font-size:14px}.empty{padding:30px 18px;text-align:center;border:1px dashed #bdcbc3;border-radius:18px}.file{background:#e4ede4;border-radius:12px;padding:14px}.file input{font-size:13px;padding:8px}.save{position:sticky;bottom:8px;width:100%;margin-top:18px;box-shadow:0 5px 20px #172b3522}.price{font-size:28px;color:#087b67;font-weight:700}.description{white-space:pre-wrap;overflow-wrap:anywhere}dl>div{justify-content:space-between;border-bottom:1px solid #dce3dc;padding:12px 0;gap:12px}dt{font-size:13px;color:#55716f}dd{margin:0;overflow-wrap:anywhere;text-align:right}.danger{color:#a33030;border-color:#debcbc;margin:24px 0}.sales{padding-left:20px;line-height:1.8;font-size:13px}a{color:#087b67;display:inline-block;min-height:44px;padding:12px 0;overflow-wrap:anywhere}#status{font-size:13px;line-height:1.5;padding:10px 0;color:#087b67}#status.error{color:#a33030}footer{padding:28px 0 10px;line-height:1.7}article{padding-top:20px}#sale{display:flex;gap:10px;flex-wrap:wrap;align-items:end}#sale label{flex:1;min-width:100px}#sale button{margin-bottom:8px}@media(min-width:700px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{padding:40px}.hero h2{max-width:420px;font-size:44px}.photos{grid-template-columns:repeat(3,minmax(0,1fr))}form:not(#sale){max-width:650px}header{padding-top:12px}}@media(prefers-reduced-motion:no-preference){button{transition:background .15s}button:hover{filter:brightness(.97)}}\n\n.shell.mini{padding:6px 10px}.mini header small{display:none}.mini h1{font-size:18px;margin:0}.mini header{padding:0}.mini #minimize{min-height:44px}\n.prep-field{padding:16px 0;border-bottom:1px solid #cbd7cf}.check{display:flex;align-items:center;gap:12px;font-size:14px;line-height:1.5}.check input{width:24px;height:24px;flex-shrink:0;margin:0}.vinted-link{padding:14px 18px;border-radius:12px;text-decoration:none}#prep-summary{background:#e4ede4;padding:14px;border-radius:12px}#photo-zip{display:block}#resume-prep{margin-bottom:12px}\n\n.shell.mini>[data-orion-languages]{display:none!important}\n[hidden]{display:none!important}\n\n#product-condition{display:block;width:100%;margin:8px 0 18px;padding:14px;border:1px solid #bdcbc3;border-radius:12px;background:white;color:#172b35;font:16px -apple-system,sans-serif}\n";
 async function launchVintedTest(product) {
   if(!hasBridge()){await startPreparation(product);status('Transfert extension indisponible : préparation manuelle ouverte.');return;}
   const t=await stageTransfer(product);
@@ -738,7 +820,7 @@ async function edit(draft) {
   const p = draft ?? { title:'', price:0, initialStock:1, photos:[], sales:[] };
   const photos = structuredClone(p.photos); selected = p.id;
   const fields = [['title','Titre','text'],['price','Prix (€)','number'],['category','Catégorie','text'],['brand','Marque','text'],['condition','État','text'],['shipping','Format du colis','text'],['initialStock','Stock initial','number']];
-  main.innerHTML = `<button id="back">← Catalogue</button><h2>${p.id ? 'Modifier la fiche' : 'Nouveau produit'}</h2><form>${fields.map(([key,label,type]) => `<label>${label}<input name="${key}" type="${type}" value="${esc(p[key] ?? '')}" ${type === 'number' ? `min="0" step="${key === 'price' ? '0.01' : '1'}" required inputmode="${key === 'price' ? 'decimal' : 'numeric'}"` : ''} ${key === 'title' ? 'required maxlength="200"' : ''}></label>`).join('')}<label for="description">Description</label><textarea id="description" name="description" rows="6">${esc(p.description)}</textarea><h3>Photos · <span id="photo-count">${photos.length}</span></h3><div class="photos"></div><button id="add-photos" type="button">＋ Ajouter des photos</button><input id="photos" type="file" accept="image/*" multiple hidden><p class="hint">Jusqu’à 15 Mo par photo. HEIC peut être conservé sans être affichable sur tous les navigateurs. Remplacer agit seulement sur la photo choisie.</p><button class="primary save" type="submit">Enregistrer la fiche</button></form>`;
+  main.innerHTML = `<button id="back">← Catalogue</button><h2>${p.id ? 'Modifier la fiche' : 'Nouveau produit'}</h2><form>${fields.map(([key,label,type]) => key==='condition' ? `<label for="product-condition">${label}</label><select id="product-condition" name="condition">${conditionEditorChoices(p.condition).map(o=>`<option value="${esc(o.value)}" ${o.selected?'selected':''}>${esc(o.label)}</option>`).join('')}</select>` : `<label>${label}<input name="${key}" type="${type}" value="${esc(p[key] ?? '')}" ${type === 'number' ? `min="0" step="${key === 'price' ? '0.01' : '1'}" required inputmode="${key === 'price' ? 'decimal' : 'numeric'}"` : ''} ${key === 'title' ? 'required maxlength="200"' : ''}></label>`).join('')}<label for="description">Description</label><textarea id="description" name="description" rows="6">${esc(p.description)}</textarea><h3>Photos · <span id="photo-count">${photos.length}</span></h3><div class="photos"></div><button id="add-photos" type="button">＋ Ajouter des photos</button><input id="photos" type="file" accept="image/*" multiple hidden><p class="hint">Jusqu’à 15 Mo par photo. HEIC peut être conservé sans être affichable sur tous les navigateurs. Remplacer agit seulement sur la photo choisie.</p><button class="primary save" type="submit">Enregistrer la fiche</button></form>`;
   const changed = () => { dirty = true; $('#photo-count').textContent = photos.length; };
   await renderPhotos($('.photos'), photos, true, changed);
   $('form').oninput = () => { dirty = true; };

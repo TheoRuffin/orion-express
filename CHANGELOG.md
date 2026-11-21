@@ -1,5 +1,14 @@
 # Historique
 
+## 3.2.4 — 21 novembre 2026
+
+- Bouton Vinted natif appelant GM_openInTab (nouveau grant), au lieu d’un clic HTTPS normal. Repli explicite par schéma Orion documenté, sans seconde ouverture automatique.
+- Accusé de réception par transfert : formulaire reconnu, tentative terminée, résultat partiel ou erreur ; aucune réussite déduite du handle d’onglet. Relecture lors du retour de visibilité.
+- Transfert relu pendant un délai borné si le cache GM du nouvel onglet n’est pas encore à jour ; aucune fiche d’un autre transfert choisie. Sans fragment après connexion, reprise manuelle explicite.
+- Marqueur de tentative photo par nonce, compatible avec le marqueur historique ; pas de nouveau transfert photo automatique après rechargement.
+- Accès direct dans Orion : titre de page, copie de l’adresse, schéma Orion pour un raccourci iOS, guide d’accueil personnalisé ES/FR. Aucun changement des préférences du téléphone ni nouvelle origine de stockage.
+- Tests de navigation/confirmation entre onglets, absence de réponse, reprise sans fragment, encodage et isolation des ACK, accès dashboard et conservation des produits.
+
 ## 3.2.3 — 21 novembre 2026
 
 - Catégorie/marque : clic sur la cellule du composant, radio et aria vérifiés conjointement, relecture après recréation du DOM, confirmation active et fermeture effective obligatoires. Une coche native isolée ne suffit plus.

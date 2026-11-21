@@ -1,0 +1,29 @@
+// Only a setup guide and explicit Orion URL. No browser preference or storage migration.
+Object.assign(ES,{
+ 'Accès direct dans Orion':'Acceso directo en Orion',
+ 'Votre dashboard sans retaper son adresse':'Tu panel sin volver a escribir la dirección',
+ 'Un réglage unique dans Orion ou un raccourci sur l’écran d’accueil permet de retrouver le catalogue. Les fiches restent sur la même origine.':'Un ajuste en Orion o un atajo en la pantalla de inicio permite volver al catálogo. Las fichas permanecen en el mismo origen.',
+ 'Ouvrir le dashboard dans Orion':'Abrir el panel en Orion',
+ 'Adresse du dashboard':'Dirección del panel',
+ 'Copier l’adresse du dashboard':'Copiar dirección del panel',
+ '1 · Une icône Orion Express sur l’iPhone':'1 · Un icono de Orion Express en el iPhone',
+ 'Copier le lien du raccourci Orion':'Copiar enlace del atajo de Orion',
+ 'Dans Raccourcis, créez un raccourci avec le lien Orion copié ci-dessous, puis l’action Ouvrir les URL. Nommez-le Orion Express et ajoutez-le à l’écran d’accueil. Ce lien demande explicitement Orion, sans créer une nouvelle application web.':'En Atajos, crea un atajo con el enlace de Orion que puedes copiar abajo y la acción Abrir URL. Llámalo Orion Express y añádelo a la pantalla de inicio. El enlace solicita Orion expresamente, sin crear otra aplicación web.',
+ '2 · Le dashboard comme page d’accueil':'2 · El panel como página de inicio',
+ 'Dans les réglages Orion → Général (General), renseignez Page d’accueil (Homepage) avec https://example.com/.':'En los ajustes de Orion → General, establece Página de inicio (Homepage) en https://example.com/.',
+ 'Réglez les nouveaux onglets (New Tabs Open With) sur Page d’accueil (Homepage).':'Configura las nuevas pestañas (New Tabs Open With) con Página de inicio (Homepage).',
+ 'Pour un nouveau départ au lancement, Démarrer Orion avec (Start Orion With) propose Nouvel onglet (New Tab). Attention : ce mode ferme les onglets de la session précédente. Si vous voulez les conserver, gardez votre réglage actuel et utilisez le raccourci ci-dessus.':'Para empezar con una nueva pestaña al abrir Orion, Iniciar Orion con (Start Orion With) ofrece Nueva pestaña (New Tab). Atención: este modo cierra las pestañas de la sesión anterior. Si quieres conservarlas, mantén tu ajuste actual y usa el atajo de arriba.',
+ 'Ces réglages doivent être faits sur l’iPhone ; le userscript ne peut pas les modifier. Les intitulés peuvent varier selon la langue et la version d’Orion.':'Estos ajustes se realizan en el iPhone; el userscript no puede modificarlos. Los nombres pueden variar según el idioma y la versión de Orion.',
+ 'Utilisez le même profil Orion et un onglet normal pour retrouver les produits. Ne remplacez pas example.com par un autre domaine et ne videz pas les données du site.':'Usa el mismo perfil de Orion y una pestaña normal para recuperar los productos. No sustituyas example.com por otro dominio ni borres los datos del sitio.',
+ 'Documentation Orion : ouverture par URL':'Documentación de Orion: apertura mediante URL',
+ 'Orion : page d’accueil sur iOS':'Orion: página de inicio en iOS',
+ 'Orion : comportement au démarrage':'Orion: comportamiento al iniciar'
+});
+function openDashboardAccess(){
+ const url='https://example.com/';
+ const orionURL=`orion://open-url?url=${encodeURIComponent(url)}`;
+ main.innerHTML=`<button id="dashboard-back">← Catalogue</button><h2>Accès direct dans Orion</h2><h3>Votre dashboard sans retaper son adresse</h3><p>Un réglage unique dans Orion ou un raccourci sur l’écran d’accueil permet de retrouver le catalogue. Les fiches restent sur la même origine.</p><a class="primary vinted-link" id="open-orion-dashboard" href="${orionURL}">Ouvrir le dashboard dans Orion</a><label for="dashboard-url">Adresse du dashboard</label><input id="dashboard-url" readonly value="${url}"><button id="copy-dashboard-url">Copier l’adresse du dashboard</button><h3>1 · Une icône Orion Express sur l’iPhone</h3><p>Dans Raccourcis, créez un raccourci avec le lien Orion copié ci-dessous, puis l’action Ouvrir les URL. Nommez-le Orion Express et ajoutez-le à l’écran d’accueil. Ce lien demande explicitement Orion, sans créer une nouvelle application web.</p><button id="copy-orion-dashboard">Copier le lien du raccourci Orion</button><textarea id="copy-fallback" readonly hidden aria-label="Texte à copier" rows="4"></textarea><h3>2 · Le dashboard comme page d’accueil</h3><ol><li>Dans les réglages Orion → Général (General), renseignez Page d’accueil (Homepage) avec https://example.com/.</li><li>Réglez les nouveaux onglets (New Tabs Open With) sur Page d’accueil (Homepage).</li><li>Pour un nouveau départ au lancement, Démarrer Orion avec (Start Orion With) propose Nouvel onglet (New Tab). Attention : ce mode ferme les onglets de la session précédente. Si vous voulez les conserver, gardez votre réglage actuel et utilisez le raccourci ci-dessus.</li></ol><p>Ces réglages doivent être faits sur l’iPhone ; le userscript ne peut pas les modifier. Les intitulés peuvent varier selon la langue et la version d’Orion.</p><p class="hint">Utilisez le même profil Orion et un onglet normal pour retrouver les produits. Ne remplacez pas example.com par un autre domaine et ne videz pas les données du site.</p><section class="tip"><a href="https://help.kagi.com/orion/misc/technical.html" target="_blank" rel="noopener noreferrer">Documentation Orion : ouverture par URL</a><br><a href="https://cdn.kagi.com/updates/changelog-mobile-1.1.2.html" target="_blank" rel="noopener noreferrer">Orion : page d’accueil sur iOS</a><br><a href="https://orionfeedback.org/d/13313-orion-ios-always-closes-all-tabs-after-a-few-hours" target="_blank" rel="noopener noreferrer">Orion : comportement au démarrage</a></section>`;
+ bind('#dashboard-back',home);
+ bind('#copy-dashboard-url',()=>copy(url));
+ bind('#copy-orion-dashboard',()=>copy(orionURL));
+}

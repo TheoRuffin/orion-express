@@ -1,4 +1,9 @@
 if (document.getElementById('orion-express-v2')) return;
+document.title='Orion Express';
+for(const name of ['application-name','apple-mobile-web-app-title']){
+  const meta=document.head.querySelector(`meta[name="${name}"]`) || document.createElement('meta');
+  meta.name=name;meta.content='Orion Express';if(!meta.isConnected)document.head.append(meta);
+}
 const host = document.createElement('div');
 host.id = 'orion-express-v2';
 host.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#f6f5ef;color:#172b35';
@@ -43,9 +48,10 @@ async function renderPhotos(container, photos, editable = false, changed = () =>
 function checkFile(f) { if (!f.type.startsWith('image/')) throw new Error('Choisissez une image.'); if (f.size > 15 * 1024 * 1024) throw new Error('Image supérieure à 15 Mo. Réduisez-la avant ajout.'); }
 async function home() {
   dirty = false; selected = undefined; await load();
-  main.innerHTML = `<section class="hero"><small>LE CATALOGUE</small><h2>Prêt pour la prochaine vente.</h2><div class="stats"><span><b>${products.length}</b> fiches</span><span><b>${products.reduce((n,p) => n + remaining(p),0)}</b> en stock</span></div><button class="primary" id="new">＋ Nouveau produit</button></section><div class="toolbar"><button id="export">Exporter la sauvegarde</button><button id="import">Restaurer une sauvegarde</button></div><button id="resume-prep">Reprendre ma préparation Vinted</button><div id="download"></div><label class="search">Retrouver une fiche<input id="search" type="search" placeholder="Titre, marque, catégorie…"></label><div class="cards"></div><input hidden type="file" accept="application/json,.json" id="backup"><section class="tip"><b>Une seule origine, vos données retrouvées</b><p>Ouvrez toujours https://example.com. Désactivez V1 avant d’utiliser V2. Une sauvegarde contient vos photos : conservez-la dans Fichiers, jamais dans le dépôt public.</p></section>`;
+  main.innerHTML = `<section class="hero"><small>LE CATALOGUE</small><h2>Prêt pour la prochaine vente.</h2><div class="stats"><span><b>${products.length}</b> fiches</span><span><b>${products.reduce((n,p) => n + remaining(p),0)}</b> en stock</span></div><button class="primary" id="new">＋ Nouveau produit</button></section><div class="toolbar"><button id="export">Exporter la sauvegarde</button><button id="import">Restaurer une sauvegarde</button><button id="dashboard-access">Accès direct dans Orion</button></div><button id="resume-prep">Reprendre ma préparation Vinted</button><div id="download"></div><label class="search">Retrouver une fiche<input id="search" type="search" placeholder="Titre, marque, catégorie…"></label><div class="cards"></div><input hidden type="file" accept="application/json,.json" id="backup"><section class="tip"><b>Une seule origine, vos données retrouvées</b><p>Ouvrez toujours https://example.com. Désactivez V1 avant d’utiliser V2. Une sauvegarde contient vos photos : conservez-la dans Fichiers, jamais dans le dépôt public.</p></section>`;
   bind('#new', async () => edit());
   bind('#resume-prep', async () => showPreparation());
+  bind('#dashboard-access',async()=>openDashboardAccess());
   const cards = $('.cards');
   const draw = () => {
     cards.replaceChildren(); const query = $('#search').value.toLocaleLowerCase('fr');

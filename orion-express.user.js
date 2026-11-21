@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name Orion Express
 // @namespace https://github.com/TheoRuffin/orion-express
-// @version 3.2.3
+// @version 3.2.4
 // @description Catálogo local y rellenado experimental en Vinted España, sin publicar.
 // @description:fr Catalogue local et préremplissage expérimental Vinted Espagne, sans publication.
 // @match https://example.com/*
@@ -10,6 +10,7 @@
 // @match https://www.vinted.es/items/new*
 // @grant GM_getValue
 // @grant GM_setValue
+// @grant GM_openInTab
 // @grant GM_deleteValue
 // @inject-into auto
 // @updateURL https://raw.githubusercontent.com/TheoRuffin/orion-express/main/orion-express.meta.js
@@ -24,6 +25,9 @@
 let orionLanguage='es';
 const LANGUAGE_KEY='orion-express-language';
 const ES={
+'Formulaire Orion reconnu. Consultez l’onglet Vinted pour vérifier le résultat.':'Formulario en Orion reconocido. Consulta la pestaña de Vinted para revisar el resultado.',
+"Identifiant de transfert invalide.":"Identificador de transferencia no válido.","Destination Orion non reconnue.":"Destino de Orion no reconocido.","Ouverture par extension indisponible. Utilisez Ouvrir avec Orion.":"Apertura por extensión no disponible. Usa Abrir con Orion.","Ouvrir avec Orion":"Abrir con Orion","Le bouton demande un onglet au navigateur par Violentmonkey.":"El botón solicita una pestaña al navegador mediante Violentmonkey.","Si l’app Vinted s’ouvre ou si aucun formulaire ne répond, utilisez Ouvrir avec Orion. Si Orion propose l’app Vinted, choisissez Jamais. Le choix iOS ne peut pas être modifié par ce script.":"Si se abre la app de Vinted o no responde ningún formulario, usa Abrir con Orion. Si Orion ofrece la app de Vinted, elige Nunca. Este script no puede cambiar la preferencia de iOS.","Formulaire Orion reconnu. Préremplissage en cours.":"Formulario en Orion reconocido. Rellenando…","Préremplissage terminé dans l’onglet Vinted. Vérifiez l’annonce.":"Rellenado terminado en la pestaña de Vinted. Revisa el anuncio.","Formulaire reçu : certains champs demandent une vérification dans l’onglet Vinted.":"Formulario recibido: algunos campos requieren revisión en la pestaña de Vinted.","Le formulaire a signalé une erreur. Consultez le bouton Orion dans l’onglet Vinted.":"El formulario ha indicado un error. Consulta el botón Orion en la pestaña de Vinted.","Aucune confirmation du formulaire. Revenez dans Orion et utilisez Ouvrir avec Orion. Aucun second onglet automatique.":"Sin confirmación del formulario. Vuelve a Orion y usa Abrir con Orion. No se abre otra pestaña automáticamente.","Ouverture demandée. En attente du formulaire dans Orion…":"Apertura solicitada. Esperando el formulario en Orion…","Ouverture explicite dans Orion demandée. En attente du formulaire…":"Apertura explícita en Orion solicitada. Esperando el formulario…",
+
 'Copier le lien pour Orion':'Copiar enlace para Orion',
 'Lien à coller dans Orion':'Enlace para pegar en Orion',
 'Lien copié. Collez-le dans la barre d’adresse d’Orion.':'Enlace copiado. Pégalo en la barra de direcciones de Orion.',
@@ -744,16 +748,56 @@ async function selectVintedCondition(doc,value){
  return `État vérifié : ${selectedText(doc.getElementById('condition'))}`;
 }
 
+// Browser-owned navigation; a returned tab handle is never proof of a loaded form.
+const LAUNCH_ACK_KEY='orion-express-launch-ack-3.2.4';
+function vintedLaunchURL(nonce){
+ if(typeof nonce!=='string'||!nonce||nonce.length>160)throw new Error('Identifiant de transfert invalide.');
+ return 'https://www.vinted.es/items/new#orion='+encodeURIComponent(nonce);
+}
+function orionLaunchURL(url){
+ const target=new URL(url);
+ if(target.protocol!=='https:'||target.username||target.password||!((target.origin==='https://example.com'&&target.pathname==='/')||(target.origin==='https://www.vinted.es'&&target.pathname==='/items/new')))throw new Error('Destination Orion non reconnue.');
+ return 'orion://open-url?url='+encodeURIComponent(target.href);
+}
+function openVintedBrowserTab(nonce){
+ if(typeof GM_openInTab!=='function')throw new Error('Ouverture par extension indisponible. Utilisez Ouvrir avec Orion.');
+ return GM_openInTab(vintedLaunchURL(nonce),{active:true,insert:true});
+}
+async function acknowledgeVintedLaunch(nonce,state){
+ if(!nonce || !['ready','complete','partial','error'].includes(state))return;
+ await GM_setValue(LAUNCH_ACK_KEY+'-'+nonce,JSON.stringify({nonce,state,at:Date.now()}));
+}
+async function readVintedLaunchAck(nonce,since){
+ try{const ack=JSON.parse(await GM_getValue(LAUNCH_ACK_KEY+'-'+nonce,''));return ack&&Number.isFinite(ack.at)&&ack.nonce===nonce&&ack.at>=since&&ack.at<=Date.now()+5000&&['ready','complete','partial','error'].includes(ack.state)?ack:null;}catch{return null;}
+}
+
 const APP_CSS = ":host{all:initial;font:16px -apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;color:#172b35}*{box-sizing:border-box}.shell{height:100%;overflow:auto;background:#f6f5ef;padding:24px max(20px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));-webkit-overflow-scrolling:touch}header,header>div,.toolbar,.stats,.card,dl>div{display:flex;align-items:center}header{justify-content:space-between;max-width:900px;margin:auto}header>div{display:block}small{font-size:10px;letter-spacing:.14em;font-weight:700;color:#55716f}h1{font-size:28px;letter-spacing:-1px;margin:5px 0 12px}h1 em{font-family:Georgia,serif;font-weight:400;color:#087b67}h2{font-size:30px;line-height:1.12;letter-spacing:-.8px;margin:14px 0 22px}h3{font-size:18px;margin:10px 0}p{line-height:1.6}button,a,input,textarea{font:inherit}button,a{touch-action:manipulation}button{min-height:46px;padding:11px 16px;border:1px solid #cbd7cf;background:#fff;color:#172b35;border-radius:12px;font-weight:600;cursor:pointer}button:disabled{opacity:.5;cursor:default}button:focus-visible,input:focus-visible,textarea:focus-visible,a:focus-visible{outline:3px solid #dc9a2b;outline-offset:3px}.primary{background:#087b67;border-color:#087b67;color:white}.origin{font-size:11px;max-width:900px;margin:8px auto 14px;color:#55716f}.hero{padding:28px;border-radius:22px;background:#e4ede4;margin-bottom:18px}.stats{gap:24px;margin-bottom:24px;font-size:13px}.stats b{display:block;font-size:27px}.toolbar{gap:8px;flex-wrap:wrap;margin:16px 0}.toolbar button{flex:1}.search{margin:24px 0 16px}label{display:block;font-weight:600;font-size:13px;margin:18px 0 8px}input,textarea{display:block;width:100%;margin-top:8px;padding:14px;border:1px solid #bdcbc3;border-radius:12px;background:white;color:#172b35;font-size:16px}textarea{resize:vertical}main,footer,#status{max-width:900px;margin:auto}.cards{display:grid;gap:12px}.card{width:100%;text-align:left;gap:16px;padding:14px}.card>div:nth-child(2){flex:1;min-width:0;overflow-wrap:anywhere}.card h3{font-size:18px;margin:5px 0}.card span{font-weight:400;font-size:13px}.thumb{width:64px;height:76px;flex-shrink:0;border-radius:10px;background:#eeeade;overflow:hidden;display:grid;place-items:center;font-size:30px}.thumb .photo,.thumb img{width:100%;height:76px;object-fit:cover}.thumb p{font-size:10px}.photo{border-radius:12px;overflow:hidden;background:#eeeade;min-width:0}.photo img{width:100%;height:180px;object-fit:contain;display:block}.photo button{font-size:12px;padding:8px;min-height:44px}.photo p{padding:12px;font-size:12px}.photos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0}.hint,footer,.tip{font-size:12px;color:#55716f}.tip{border-top:1px solid #cbd7cf;margin-top:30px;padding-top:20px}.tip b{font-size:14px}.empty{padding:30px 18px;text-align:center;border:1px dashed #bdcbc3;border-radius:18px}.file{background:#e4ede4;border-radius:12px;padding:14px}.file input{font-size:13px;padding:8px}.save{position:sticky;bottom:8px;width:100%;margin-top:18px;box-shadow:0 5px 20px #172b3522}.price{font-size:28px;color:#087b67;font-weight:700}.description{white-space:pre-wrap;overflow-wrap:anywhere}dl>div{justify-content:space-between;border-bottom:1px solid #dce3dc;padding:12px 0;gap:12px}dt{font-size:13px;color:#55716f}dd{margin:0;overflow-wrap:anywhere;text-align:right}.danger{color:#a33030;border-color:#debcbc;margin:24px 0}.sales{padding-left:20px;line-height:1.8;font-size:13px}a{color:#087b67;display:inline-block;min-height:44px;padding:12px 0;overflow-wrap:anywhere}#status{font-size:13px;line-height:1.5;padding:10px 0;color:#087b67}#status.error{color:#a33030}footer{padding:28px 0 10px;line-height:1.7}article{padding-top:20px}#sale{display:flex;gap:10px;flex-wrap:wrap;align-items:end}#sale label{flex:1;min-width:100px}#sale button{margin-bottom:8px}@media(min-width:700px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{padding:40px}.hero h2{max-width:420px;font-size:44px}.photos{grid-template-columns:repeat(3,minmax(0,1fr))}form:not(#sale){max-width:650px}header{padding-top:12px}}@media(prefers-reduced-motion:no-preference){button{transition:background .15s}button:hover{filter:brightness(.97)}}\n\n.shell.mini{padding:6px 10px}.mini header small{display:none}.mini h1{font-size:18px;margin:0}.mini header{padding:0}.mini #minimize{min-height:44px}\n.prep-field{padding:16px 0;border-bottom:1px solid #cbd7cf}.check{display:flex;align-items:center;gap:12px;font-size:14px;line-height:1.5}.check input{width:24px;height:24px;flex-shrink:0;margin:0}.vinted-link{padding:14px 18px;border-radius:12px;text-decoration:none}#prep-summary{background:#e4ede4;padding:14px;border-radius:12px}#photo-zip{display:block}#resume-prep{margin-bottom:12px}\n\n.shell.mini>[data-orion-languages]{display:none!important}\n[hidden]{display:none!important}\n\n#product-condition{display:block;width:100%;margin:8px 0 18px;padding:14px;border:1px solid #bdcbc3;border-radius:12px;background:white;color:#172b35;font:16px -apple-system,sans-serif}\n";
 async function launchVintedTest(product) {
   if(!hasBridge()){await startPreparation(product);status('Transfert extension indisponible : préparation manuelle ouverte.');return;}
-  const t=await stageTransfer(product);
-  const link=`https://www.vinted.es/items/new#orion=${encodeURIComponent(t.nonce)}`;
-  main.innerHTML=`<button id="test-back">← Retour à la fiche</button><h2>Transfert prêt</h2><p>Produit et photos enregistrés dans le stockage de Violentmonkey ; transfert valable 24 heures. Aucun serveur de transfert.</p><a class="primary vinted-link" href="${link}" target="_self" rel="noreferrer">Ouvrir Vinted et préremplir (test) ↗</a><p>Ouverture dans cet onglet. Si iOS ouvre l’app Vinted, copiez le lien ci-dessous et collez-le dans la barre d’adresse d’Orion. Si Orion propose l’app, choisissez Jamais. Un script ne peut pas imposer ce choix à iOS.</p><button id="copy-vinted-link">Copier le lien pour Orion</button><textarea id="vinted-link-fallback" readonly hidden aria-label="Lien à coller dans Orion" rows="3"></textarea><p id="vinted-link-status" role="status"></p><p>Expérimental : contrôlez tous les champs et les images. Le script ne publie ni ne sauvegarde de brouillon. Les valeurs supplémentaires inconnues restent manuelles.</p><button id="manual-prep">Utiliser la préparation manuelle</button>`;
+  const t=await stageTransfer(product),link=vintedLaunchURL(t.nonce),nativeLink=orionLaunchURL(link);
+  main.innerHTML=`<button id="test-back">← Retour à la fiche</button><h2>Transfert prêt</h2><p>Produit et photos enregistrés dans le stockage de Violentmonkey ; transfert valable 24 heures. Aucun serveur de transfert.</p><button id="open-vinted" class="primary">Ouvrir Vinted et préremplir (test) ↗</button><p id="vinted-launch-status" role="status">Le bouton demande un onglet au navigateur par Violentmonkey.</p><a id="open-with-orion" href="${nativeLink}">Ouvrir avec Orion</a><p>Si l’app Vinted s’ouvre ou si aucun formulaire ne répond, utilisez Ouvrir avec Orion. Si Orion propose l’app Vinted, choisissez Jamais. Le choix iOS ne peut pas être modifié par ce script.</p><button id="copy-vinted-link">Copier le lien pour Orion</button><textarea id="vinted-link-fallback" readonly hidden aria-label="Lien à coller dans Orion" rows="3"></textarea><p id="vinted-link-status" role="status"></p><p>Expérimental : contrôlez tous les champs et les images. Le script ne publie ni ne sauvegarde de brouillon. Les valeurs supplémentaires inconnues restent manuelles.</p><button id="manual-prep">Utiliser la préparation manuelle</button>`;
+  const button=main.querySelector('#open-vinted'),message=main.querySelector('#vinted-launch-status'),native=main.querySelector('#open-with-orion');
+  let requested=false,since=0,timer;
+  const showAck=async()=>{
+    if(!since||!message.isConnected)return;
+    const ack=await readVintedLaunchAck(t.nonce,since);
+    if(ack){message.textContent=({ready:'Formulaire Orion reconnu. Préremplissage en cours.',complete:'Préremplissage terminé dans l’onglet Vinted. Vérifiez l’annonce.',partial:'Formulaire reçu : certains champs demandent une vérification dans l’onglet Vinted.',error:'Le formulaire a signalé une erreur. Consultez le bouton Orion dans l’onglet Vinted.'})[ack.state];native.hidden=ack.state!=='error';return ack;}
+  };
+  const watch=()=>{
+    clearInterval(timer);let checks=0;
+    timer=setInterval(async()=>{if(!message.isConnected){clearInterval(timer);return;}const ack=await showAck();if(ack&&ack.state!=='ready'){clearInterval(timer);return;}if(++checks>=24){clearInterval(timer);if(!ack){native.hidden=false;message.textContent='Aucune confirmation du formulaire. Revenez dans Orion et utilisez Ouvrir avec Orion. Aucun second onglet automatique.';}else if(ack.state==='ready'){message.textContent='Formulaire Orion reconnu. Consultez l’onglet Vinted pour vérifier le résultat.';}}},500);
+  };
+  button.onclick=()=>{
+    if(requested)return;requested=true;button.disabled=true;since=Date.now();
+    try{openVintedBrowserTab(t.nonce);message.textContent='Ouverture demandée. En attente du formulaire dans Orion…';watch();}
+    catch(e){requested=false;button.disabled=false;message.textContent=errorMessage(e);native.hidden=false;}
+  };
+  native.onclick=()=>{since=Date.now();button.disabled=true;requested=true;message.textContent='Ouverture explicite dans Orion demandée. En attente du formulaire…';watch();};
+  const resume=()=>{if(message.isConnected)void showAck();else{window.removeEventListener('pageshow',resume);document.removeEventListener('visibilitychange',resume);}};window.addEventListener('pageshow',resume);document.addEventListener('visibilitychange',resume);
   bind('#copy-vinted-link',async()=>{
-    const message=main.querySelector('#vinted-link-status');
-    try{await navigator.clipboard.writeText(link);message.textContent='Lien copié. Collez-le dans la barre d’adresse d’Orion.';}
-    catch{const field=main.querySelector('#vinted-link-fallback');field.value=link;field.hidden=false;field.focus();field.select();message.textContent='Appuyez longuement sur le lien sélectionné, puis Copier. Collez-le dans la barre d’adresse d’Orion.';}
+    const note=main.querySelector('#vinted-link-status');
+    try{await navigator.clipboard.writeText(link);note.textContent='Lien copié. Collez-le dans la barre d’adresse d’Orion.';}
+    catch{const field=main.querySelector('#vinted-link-fallback');field.value=link;field.hidden=false;field.focus();field.select();note.textContent='Appuyez longuement sur le lien sélectionné, puis Copier. Collez-le dans la barre d’adresse d’Orion.';}
   });
   bind('#test-back',()=>preview(product.id));bind('#manual-prep',()=>startPreparation(product));
 }
@@ -762,24 +806,41 @@ async function initVintedAssistant(){
   const root=host.attachShadow({mode:'open'});root.innerHTML=`<style>:host{font:15px -apple-system,sans-serif;color:#172b35}*{box-sizing:border-box}section{width:min(360px,calc(100vw - 16px));padding:14px;background:#f6f5ef;border:2px solid #087b67;border-radius:14px;max-height:55vh;overflow:auto}button,a{font:inherit;display:inline-block;padding:12px;min-height:44px;margin:4px;border-radius:9px;border:1px solid #087b67;background:white;color:#087b67}p,li{line-height:1.4}ul{padding-left:18px}textarea{width:100%;font-size:16px}#toggle{position:sticky;top:0;z-index:1}section.folded [data-orion-languages]{display:none!important}section.folded{width:auto;padding:0;border:0;background:transparent}section.folded #toggle{margin:0;padding:8px 12px;min-height:44px;border-radius:22px;background:#087b67;color:white}</style><section class="folded"><button id="toggle" aria-label="Ouvrir Orion" aria-expanded="false">Orion</button><div id="body" hidden><b>Orion Express · préremplissage expérimental</b><p id="status" role="status">Chargement du transfert local…</p><button id="fill" disabled>Préremplir une seule fois</button><button id="retry" disabled>Réessayer les textes et choix (sans photos)</button><ul id="result"></ul><p>Aucune publication ni sauvegarde de brouillon automatique. La présence dans un champ ne confirme pas sa validation par Vinted. Vérifiez les photos et les champs dépendants après chaque changement de catégorie.</p><a href="https://example.com/" target="_blank" rel="noopener">Retour au catalogue</a><button id="clear">Effacer le transfert local</button></div></section>`;document.body.append(host);
   attachOrionLanguage(root,root.querySelector('section'));
   const $=s=>root.querySelector(s);let busy=false,used=false,needsAttention=false,product,transfer;
+  const expected=new URLSearchParams(location.hash.slice(1)).get('orion');
   $('#toggle').onclick=()=>{const body=$('#body');body.hidden=!body.hidden;$('#toggle').textContent=body.hidden?(needsAttention?'Orion !':'Orion'):'Réduire';$('#toggle').setAttribute('aria-label',body.hidden?'Ouvrir Orion':'Réduire Orion');$('#toggle').setAttribute('aria-expanded',String(!body.hidden));root.querySelector('section').classList.toggle('folded',body.hidden);};
-  const run=async(fn)=>{if(busy)return;busy=true;$('#fill').disabled=true;$('#retry').disabled=true;try{await fn();}catch(e){needsAttention=true;$('#status').textContent=errorMessage(e);if($('#body').hidden)$('#toggle').textContent='Orion !';}finally{busy=false;$('#fill').disabled=used||!product;$('#retry').disabled=!used||!product;}};
+  const run=async(fn)=>{if(busy)return;busy=true;$('#fill').disabled=true;$('#retry').disabled=true;try{await fn();}catch(e){if(expected||transfer?.nonce)await acknowledgeVintedLaunch(expected||transfer.nonce,'error').catch(()=>{});needsAttention=true;$('#status').textContent=errorMessage(e);if($('#body').hidden)$('#toggle').textContent='Orion !';}finally{busy=false;$('#fill').disabled=used||!product;$('#retry').disabled=!used||!product;}};
   const perform=async(photos)=>{
     if(location.pathname!=='/items/new')throw new Error('Ouvrez le formulaire de création Vinted.');
     if(!navigator.onLine)throw new Error('Connexion indisponible. Aucun transfert lancé.');
     uniqueField(document,'title');uniqueField(document,'description','TEXTAREA');
-    if(photos){const lock=await GM_getValue(TRANSFER_KEY+'-used','');if(lock===transfer.nonce){used=true;throw new Error('Ce transfert a déjà été tenté. Reprenez les textes sans photos ou préparez de nouveau la fiche.');}await GM_setValue(TRANSFER_KEY+'-used',transfer.nonce);used=true;}
+    if(photos){const lock=await GM_getValue(TRANSFER_KEY+'-used','');if(lock===transfer.nonce || await GM_getValue(TRANSFER_KEY+'-used-'+transfer.nonce,false)){used=true;throw new Error('Ce transfert a déjà été tenté. Reprenez les textes sans photos ou préparez de nouveau la fiche.');}await GM_setValue(TRANSFER_KEY+'-used-'+transfer.nonce,true);await GM_setValue(TRANSFER_KEY+'-used',transfer.nonce);used=true;}
     const draw=results=>{needsAttention=Object.entries(results).some(([key,value])=>key!=='dynamic' && value.startsWith('Manuel'));if($('#body').hidden)$('#toggle').textContent=needsAttention?'Orion !':'Orion';$('#result').replaceChildren();for(const [k,v]of Object.entries(results)){const li=document.createElement('li');li.textContent=`${Object.fromEntries(PREP_FIELDS)[k] || ({photos:'Photos',dynamic:'Champs supplémentaires'})[k] || k} : ${v}`;$('#result').append(li);}};
-    await applyVintedProduct(document,product,draw,{photos});$('#status').textContent='Tentative terminée. Vérifiez chaque champ et chaque miniature native Vinted. Rien n’a été publié.';
+    const results=await applyVintedProduct(document,product,draw,{photos});await acknowledgeVintedLaunch(transfer.nonce,Object.entries(results).some(([key,value])=>key!=='dynamic'&&value.startsWith('Manuel'))?'partial':'complete');$('#status').textContent='Tentative terminée. Vérifiez chaque champ et chaque miniature native Vinted. Rien n’a été publié.';
   };
   const fill=async photos=>{if(!navigator.locks?.request)throw new Error('Verrou de sécurité indisponible dans ce navigateur. Utilisez la préparation manuelle.');return navigator.locks.request('orion-express-fill',()=>perform(photos));};
   $('#fill').onclick=()=>run(()=>fill(true));$('#retry').onclick=()=>run(()=>fill(false));
   $('#clear').onclick=()=>run(async()=>{await GM_deleteValue(TRANSFER_KEY);product=null;$('#status').textContent='Transfert local effacé. Catalogue conservé.';});
-  await run(async()=>{if(!hasBridge())throw new Error('Stockage Violentmonkey inaccessible. Vérifiez les autorisations du script.');({transfer,product}=await readTransfer());const expected=new URLSearchParams(location.hash.slice(1)).get('orion');if(expected && expected!==transfer.nonce)throw new Error('Ce lien correspond à un autre transfert. Préparez de nouveau la fiche.');$('#status').textContent=`Prêt : ${product.title}, ${product.photos.length} photo(s). Lancez le test lorsque le formulaire est chargé.`;if(expected){await waitFor(()=>visible(document.getElementById('title')),12000);await fill(true);}});
+  await run(async()=>{
+    if(!hasBridge())throw new Error('Stockage Violentmonkey inaccessible. Vérifiez les autorisations du script.');
+    let loaded,lastError;
+    // A fresh extension-created tab can initially see an older GM cache. Never select that old product.
+    for(let i=0;i<6;i++){
+      try{loaded=await readTransfer();if(expected&&expected!==loaded.transfer.nonce)throw new Error('Ce lien correspond à un autre transfert. Préparez de nouveau la fiche.');break;}
+      catch(e){lastError=e;loaded=null;if(!expected||i===5)throw lastError;await new Promise(r=>setTimeout(r,200));}
+    }
+    ({transfer,product}=loaded);
+    $('#status').textContent=`Prêt : ${product.title}, ${product.photos.length} photo(s). Lancez le test lorsque le formulaire est chargé.`;
+    if(expected){await waitFor(()=>visible(document.getElementById('title'))&&visible(document.getElementById('description')),20000);await acknowledgeVintedLaunch(expected,'ready');await fill(true);}
+  });
 }
 
 if(location.hostname === 'www.vinted.es'){void initVintedAssistant();return;}
 if (document.getElementById('orion-express-v2')) return;
+document.title='Orion Express';
+for(const name of ['application-name','apple-mobile-web-app-title']){
+  const meta=document.head.querySelector(`meta[name="${name}"]`) || document.createElement('meta');
+  meta.name=name;meta.content='Orion Express';if(!meta.isConnected)document.head.append(meta);
+}
 const host = document.createElement('div');
 host.id = 'orion-express-v2';
 host.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#f6f5ef;color:#172b35';
@@ -824,9 +885,10 @@ async function renderPhotos(container, photos, editable = false, changed = () =>
 function checkFile(f) { if (!f.type.startsWith('image/')) throw new Error('Choisissez une image.'); if (f.size > 15 * 1024 * 1024) throw new Error('Image supérieure à 15 Mo. Réduisez-la avant ajout.'); }
 async function home() {
   dirty = false; selected = undefined; await load();
-  main.innerHTML = `<section class="hero"><small>LE CATALOGUE</small><h2>Prêt pour la prochaine vente.</h2><div class="stats"><span><b>${products.length}</b> fiches</span><span><b>${products.reduce((n,p) => n + remaining(p),0)}</b> en stock</span></div><button class="primary" id="new">＋ Nouveau produit</button></section><div class="toolbar"><button id="export">Exporter la sauvegarde</button><button id="import">Restaurer une sauvegarde</button></div><button id="resume-prep">Reprendre ma préparation Vinted</button><div id="download"></div><label class="search">Retrouver une fiche<input id="search" type="search" placeholder="Titre, marque, catégorie…"></label><div class="cards"></div><input hidden type="file" accept="application/json,.json" id="backup"><section class="tip"><b>Une seule origine, vos données retrouvées</b><p>Ouvrez toujours https://example.com. Désactivez V1 avant d’utiliser V2. Une sauvegarde contient vos photos : conservez-la dans Fichiers, jamais dans le dépôt public.</p></section>`;
+  main.innerHTML = `<section class="hero"><small>LE CATALOGUE</small><h2>Prêt pour la prochaine vente.</h2><div class="stats"><span><b>${products.length}</b> fiches</span><span><b>${products.reduce((n,p) => n + remaining(p),0)}</b> en stock</span></div><button class="primary" id="new">＋ Nouveau produit</button></section><div class="toolbar"><button id="export">Exporter la sauvegarde</button><button id="import">Restaurer une sauvegarde</button><button id="dashboard-access">Accès direct dans Orion</button></div><button id="resume-prep">Reprendre ma préparation Vinted</button><div id="download"></div><label class="search">Retrouver une fiche<input id="search" type="search" placeholder="Titre, marque, catégorie…"></label><div class="cards"></div><input hidden type="file" accept="application/json,.json" id="backup"><section class="tip"><b>Une seule origine, vos données retrouvées</b><p>Ouvrez toujours https://example.com. Désactivez V1 avant d’utiliser V2. Une sauvegarde contient vos photos : conservez-la dans Fichiers, jamais dans le dépôt public.</p></section>`;
   bind('#new', async () => edit());
   bind('#resume-prep', async () => showPreparation());
+  bind('#dashboard-access',async()=>openDashboardAccess());
   const cards = $('.cards');
   const draw = () => {
     cards.replaceChildren(); const query = $('#search').value.toLocaleLowerCase('fr');
@@ -905,6 +967,36 @@ async function preview(id) {
   $('#sale').onsubmit = e => { e.preventDefault(); void safe(async () => { const data = new FormData($('#sale')); await repo.sell(id,Number(data.get('quantity')),Number(data.get('unitPrice'))); await preview(id); status('Vente enregistrée, stock mis à jour.'); }); };
 }
 void safe(async () => { repo = new Products(await openDB()); await home(); status('Catalogue chargé. Avant la première modification V1, exportez une sauvegarde.'); });
+
+// Only a setup guide and explicit Orion URL. No browser preference or storage migration.
+Object.assign(ES,{
+ 'Accès direct dans Orion':'Acceso directo en Orion',
+ 'Votre dashboard sans retaper son adresse':'Tu panel sin volver a escribir la dirección',
+ 'Un réglage unique dans Orion ou un raccourci sur l’écran d’accueil permet de retrouver le catalogue. Les fiches restent sur la même origine.':'Un ajuste en Orion o un atajo en la pantalla de inicio permite volver al catálogo. Las fichas permanecen en el mismo origen.',
+ 'Ouvrir le dashboard dans Orion':'Abrir el panel en Orion',
+ 'Adresse du dashboard':'Dirección del panel',
+ 'Copier l’adresse du dashboard':'Copiar dirección del panel',
+ '1 · Une icône Orion Express sur l’iPhone':'1 · Un icono de Orion Express en el iPhone',
+ 'Copier le lien du raccourci Orion':'Copiar enlace del atajo de Orion',
+ 'Dans Raccourcis, créez un raccourci avec le lien Orion copié ci-dessous, puis l’action Ouvrir les URL. Nommez-le Orion Express et ajoutez-le à l’écran d’accueil. Ce lien demande explicitement Orion, sans créer une nouvelle application web.':'En Atajos, crea un atajo con el enlace de Orion que puedes copiar abajo y la acción Abrir URL. Llámalo Orion Express y añádelo a la pantalla de inicio. El enlace solicita Orion expresamente, sin crear otra aplicación web.',
+ '2 · Le dashboard comme page d’accueil':'2 · El panel como página de inicio',
+ 'Dans les réglages Orion → Général (General), renseignez Page d’accueil (Homepage) avec https://example.com/.':'En los ajustes de Orion → General, establece Página de inicio (Homepage) en https://example.com/.',
+ 'Réglez les nouveaux onglets (New Tabs Open With) sur Page d’accueil (Homepage).':'Configura las nuevas pestañas (New Tabs Open With) con Página de inicio (Homepage).',
+ 'Pour un nouveau départ au lancement, Démarrer Orion avec (Start Orion With) propose Nouvel onglet (New Tab). Attention : ce mode ferme les onglets de la session précédente. Si vous voulez les conserver, gardez votre réglage actuel et utilisez le raccourci ci-dessus.':'Para empezar con una nueva pestaña al abrir Orion, Iniciar Orion con (Start Orion With) ofrece Nueva pestaña (New Tab). Atención: este modo cierra las pestañas de la sesión anterior. Si quieres conservarlas, mantén tu ajuste actual y usa el atajo de arriba.',
+ 'Ces réglages doivent être faits sur l’iPhone ; le userscript ne peut pas les modifier. Les intitulés peuvent varier selon la langue et la version d’Orion.':'Estos ajustes se realizan en el iPhone; el userscript no puede modificarlos. Los nombres pueden variar según el idioma y la versión de Orion.',
+ 'Utilisez le même profil Orion et un onglet normal pour retrouver les produits. Ne remplacez pas example.com par un autre domaine et ne videz pas les données du site.':'Usa el mismo perfil de Orion y una pestaña normal para recuperar los productos. No sustituyas example.com por otro dominio ni borres los datos del sitio.',
+ 'Documentation Orion : ouverture par URL':'Documentación de Orion: apertura mediante URL',
+ 'Orion : page d’accueil sur iOS':'Orion: página de inicio en iOS',
+ 'Orion : comportement au démarrage':'Orion: comportamiento al iniciar'
+});
+function openDashboardAccess(){
+ const url='https://example.com/';
+ const orionURL=`orion://open-url?url=${encodeURIComponent(url)}`;
+ main.innerHTML=`<button id="dashboard-back">← Catalogue</button><h2>Accès direct dans Orion</h2><h3>Votre dashboard sans retaper son adresse</h3><p>Un réglage unique dans Orion ou un raccourci sur l’écran d’accueil permet de retrouver le catalogue. Les fiches restent sur la même origine.</p><a class="primary vinted-link" id="open-orion-dashboard" href="${orionURL}">Ouvrir le dashboard dans Orion</a><label for="dashboard-url">Adresse du dashboard</label><input id="dashboard-url" readonly value="${url}"><button id="copy-dashboard-url">Copier l’adresse du dashboard</button><h3>1 · Une icône Orion Express sur l’iPhone</h3><p>Dans Raccourcis, créez un raccourci avec le lien Orion copié ci-dessous, puis l’action Ouvrir les URL. Nommez-le Orion Express et ajoutez-le à l’écran d’accueil. Ce lien demande explicitement Orion, sans créer une nouvelle application web.</p><button id="copy-orion-dashboard">Copier le lien du raccourci Orion</button><textarea id="copy-fallback" readonly hidden aria-label="Texte à copier" rows="4"></textarea><h3>2 · Le dashboard comme page d’accueil</h3><ol><li>Dans les réglages Orion → Général (General), renseignez Page d’accueil (Homepage) avec https://example.com/.</li><li>Réglez les nouveaux onglets (New Tabs Open With) sur Page d’accueil (Homepage).</li><li>Pour un nouveau départ au lancement, Démarrer Orion avec (Start Orion With) propose Nouvel onglet (New Tab). Attention : ce mode ferme les onglets de la session précédente. Si vous voulez les conserver, gardez votre réglage actuel et utilisez le raccourci ci-dessus.</li></ol><p>Ces réglages doivent être faits sur l’iPhone ; le userscript ne peut pas les modifier. Les intitulés peuvent varier selon la langue et la version d’Orion.</p><p class="hint">Utilisez le même profil Orion et un onglet normal pour retrouver les produits. Ne remplacez pas example.com par un autre domaine et ne videz pas les données du site.</p><section class="tip"><a href="https://help.kagi.com/orion/misc/technical.html" target="_blank" rel="noopener noreferrer">Documentation Orion : ouverture par URL</a><br><a href="https://cdn.kagi.com/updates/changelog-mobile-1.1.2.html" target="_blank" rel="noopener noreferrer">Orion : page d’accueil sur iOS</a><br><a href="https://orionfeedback.org/d/13313-orion-ios-always-closes-all-tabs-after-a-few-hours" target="_blank" rel="noopener noreferrer">Orion : comportement au démarrage</a></section>`;
+ bind('#dashboard-back',home);
+ bind('#copy-dashboard-url',()=>copy(url));
+ bind('#copy-orion-dashboard',()=>copy(orionURL));
+}
 
 let preparationDB, preparationURLs=[];
 async function workspace() { if(!preparationDB) preparationDB=await prepStore(); return preparationDB; }

@@ -14,6 +14,7 @@ const header = `// ==UserScript==
 // @match https://www.vinted.es/items/new*
 // @grant GM_getValue
 // @grant GM_setValue
+// @grant GM_openInTab
 // @grant GM_deleteValue
 // @inject-into auto
 // @updateURL ${base}orion-express.meta.js
@@ -29,8 +30,10 @@ const preparation = (await readFile(new URL('src/preparation.js', root),'utf8'))
 const prepUI = await readFile(new URL('src/preparation-ui.js', root),'utf8');
 const adapter = (await readFile(new URL('src/vinted-adapter.js',root),'utf8')).replace(/^export /gm,'');
 const conditionModule=(await readFile(new URL('src/condition.js',root),'utf8')).replace(/^export /gm,'');
+const launchModule=(await readFile(new URL('src/launch.js',root),'utf8')).replace(/^export /gm,'');
+const dashboardAccess=await readFile(new URL('src/dashboard-access.js',root),'utf8');
 const vintedUI=await readFile(new URL('src/vinted-ui.js',root),'utf8');
 const css = await readFile(new URL('src/style.css', root), 'utf8');
 await writeFile(new URL('orion-express.meta.js', root), header);
-await writeFile(new URL('orion-express.user.js', root), header + '\n(async () => {\n\'use strict\';\n' + localisation + '\nawait initialiseOrionLanguage();\n' + core + '\n' + preparation + '\n' + adapter + '\n' + conditionModule + '\nconst APP_CSS = ' + JSON.stringify(css) + ';\n' + vintedUI + '\nif(location.hostname === \'www.vinted.es\'){void initVintedAssistant();return;}\n' + ui + '\n' + prepUI + '\n})();\n');
+await writeFile(new URL('orion-express.user.js', root), header + '\n(async () => {\n\'use strict\';\n' + localisation + '\nawait initialiseOrionLanguage();\n' + core + '\n' + preparation + '\n' + adapter + '\n' + conditionModule + '\n' + launchModule + '\nconst APP_CSS = ' + JSON.stringify(css) + ';\n' + vintedUI + '\nif(location.hostname === \'www.vinted.es\'){void initVintedAssistant();return;}\n' + ui + '\n' + dashboardAccess + '\n' + prepUI + '\n})();\n');
 console.log(`Build ${pkg.version} : userscript autonome et métadonnées générés.`);

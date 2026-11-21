@@ -1,7 +1,13 @@
 async function launchVintedTest(product) {
   if(!hasBridge()){await startPreparation(product);status('Transfert extension indisponible : préparation manuelle ouverte.');return;}
   const t=await stageTransfer(product);
-  main.innerHTML=`<button id="test-back">← Retour à la fiche</button><h2>Transfert prêt</h2><p>Produit et photos enregistrés dans le stockage de Violentmonkey ; transfert valable 24 heures. Aucun serveur de transfert.</p><a class="primary vinted-link" href="https://www.vinted.es/items/new#orion=${encodeURIComponent(t.nonce)}" target="_blank" rel="noopener noreferrer">Ouvrir Vinted et préremplir (test) ↗</a><p>Expérimental : contrôlez tous les champs et les images. Le script ne publie ni ne sauvegarde de brouillon. Les valeurs supplémentaires inconnues restent manuelles.</p><button id="manual-prep">Utiliser la préparation manuelle</button>`;
+  const link=`https://www.vinted.es/items/new#orion=${encodeURIComponent(t.nonce)}`;
+  main.innerHTML=`<button id="test-back">← Retour à la fiche</button><h2>Transfert prêt</h2><p>Produit et photos enregistrés dans le stockage de Violentmonkey ; transfert valable 24 heures. Aucun serveur de transfert.</p><a class="primary vinted-link" href="${link}" target="_self" rel="noreferrer">Ouvrir Vinted et préremplir (test) ↗</a><p>Ouverture dans cet onglet. Si iOS ouvre l’app Vinted, copiez le lien ci-dessous et collez-le dans la barre d’adresse d’Orion. Si Orion propose l’app, choisissez Jamais. Un script ne peut pas imposer ce choix à iOS.</p><button id="copy-vinted-link">Copier le lien pour Orion</button><textarea id="vinted-link-fallback" readonly hidden aria-label="Lien à coller dans Orion" rows="3"></textarea><p id="vinted-link-status" role="status"></p><p>Expérimental : contrôlez tous les champs et les images. Le script ne publie ni ne sauvegarde de brouillon. Les valeurs supplémentaires inconnues restent manuelles.</p><button id="manual-prep">Utiliser la préparation manuelle</button>`;
+  bind('#copy-vinted-link',async()=>{
+    const message=main.querySelector('#vinted-link-status');
+    try{await navigator.clipboard.writeText(link);message.textContent='Lien copié. Collez-le dans la barre d’adresse d’Orion.';}
+    catch{const field=main.querySelector('#vinted-link-fallback');field.value=link;field.hidden=false;field.focus();field.select();message.textContent='Appuyez longuement sur le lien sélectionné, puis Copier. Collez-le dans la barre d’adresse d’Orion.';}
+  });
   bind('#test-back',()=>preview(product.id));bind('#manual-prep',()=>startPreparation(product));
 }
 async function initVintedAssistant(){

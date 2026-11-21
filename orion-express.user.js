@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name Orion Express
 // @namespace https://github.com/TheoRuffin/orion-express
-// @version 3.2.2
+// @version 3.2.3
 // @description Catálogo local y rellenado experimental en Vinted España, sin publicar.
 // @description:fr Catalogue local et préremplissage expérimental Vinted Espagne, sans publication.
 // @match https://example.com/*
@@ -24,6 +24,12 @@
 let orionLanguage='es';
 const LANGUAGE_KEY='orion-express-language';
 const ES={
+'Copier le lien pour Orion':'Copiar enlace para Orion',
+'Lien à coller dans Orion':'Enlace para pegar en Orion',
+'Lien copié. Collez-le dans la barre d’adresse d’Orion.':'Enlace copiado. Pégalo en la barra de direcciones de Orion.',
+'Appuyez longuement sur le lien sélectionné, puis Copier. Collez-le dans la barre d’adresse d’Orion.':'Mantén pulsado el enlace seleccionado y elige Copiar. Pégalo en la barra de direcciones de Orion.',
+'Ouverture dans cet onglet. Si iOS ouvre l’app Vinted, copiez le lien ci-dessous et collez-le dans la barre d’adresse d’Orion. Si Orion propose l’app, choisissez Jamais. Un script ne peut pas imposer ce choix à iOS.':'Se abre en esta pestaña. Si iOS abre la app de Vinted, copia el enlace de abajo y pégalo en la barra de direcciones de Orion. Si Orion ofrece abrir la app, elige Nunca. Un script no puede imponer esta elección a iOS.',
+'Le colis demandé ne reste pas sélectionné. Vérifiez le format dans Vinted.':'El paquete solicitado no permanece seleccionado. Comprueba el tamaño en Vinted.',
 'Choisir un état précis':'Elegir un estado preciso',
 'Neuf avec étiquette':'Nuevo con etiquetas','Neuf sans étiquette':'Nuevo sin etiquetas','Très bon état':'Muy bueno','Bon état':'Bueno','Satisfaisant':'Satisfactorio',
 'État ambigu : choisissez Neuf avec étiquette ou Neuf sans étiquette dans la fiche produit.':'Estado ambiguo: elige Nuevo con etiquetas o Nuevo sin etiquetas en la ficha del producto.',
@@ -533,7 +539,16 @@ async function setVintedPrice(doc,raw) {
   if(parseVintedPrice(el.value)!==amount)throw new Error('Prix non conservé après formatage.');
   return `Prix vérifié : ${amount.toFixed(2)} €`;
 }
-const isVintedSelected=e=>!!e && (e.checked===true || e.getAttribute('aria-checked')==='true' || !!e.querySelector('input[type=radio]:checked'));
+const isVintedSelected=e=>{
+  if(!e)return false;
+  const native=e.matches('input[type=radio]')?e:e.querySelector('input[type=radio]');
+  if(e.hasAttribute('aria-checked'))return e.getAttribute('aria-checked')==='true' && (!native || native.checked);
+  return native?.checked===true || e.getAttribute('aria-selected')==='true';
+};
+async function waitForStable(find,stableMs=700,ms=4500){
+  let since=0;
+  return waitFor(()=>{if(!find()){since=0;return false;}if(!since)since=Date.now();return Date.now()-since>=stableMs;},ms);
+}
 const selectedText=e=>e?.querySelector('[data-testid$="--value"]')?.textContent ?? (e?.matches('input,select')?e.value:e?.textContent) ?? '';
 function parts(value){return String(value).split(/\s*(?:>|›)\s*/).map(v=>v.trim()).filter(Boolean);}
 function optionInfo(el,target) {
@@ -553,54 +568,75 @@ async function selectVintedChoice(doc,id,value) {
   if(id==='condition')return selectVintedCondition(doc,value);
   const path=parts(value);if(!path.length)throw new Error('Valeur manquante dans la fiche.');const target=path.at(-1);
   const trigger=await waitFor(()=>{const list=[...doc.querySelectorAll(`[id="${id}"]`)].filter(visible);return list.length===1?list[0]:null;},4500);
-  if(fold(selectedText(trigger))===fold(target) && path.length===1 && trigger.getAttribute('aria-expanded')!=='true')return `Sélection vérifiée : ${target}`;
-  if(trigger.getAttribute('aria-expanded')!=='true')trigger.click();
+  const searchId=id==='category'?'catalog-search-input':`${id}-search-input`;
+  const menuVisible=()=>visible(doc.getElementById(searchId)) || visible(popupFor(doc,trigger));
+  if(fold(selectedText(trigger))===fold(target) && path.length===1 && trigger.getAttribute('aria-expanded')!=='true' && !menuVisible())return `Sélection vérifiée : ${target}`;
+  if(trigger.getAttribute('aria-expanded')!=='true' && !menuVisible())trigger.click();
   try {
     const search=await waitFor(()=>{
-      const exact=doc.getElementById(id==='category'?'catalog-search-input':`${id}-search-input`);
+      const exact=doc.getElementById(searchId);
       if(visible(exact))return exact;
       const popup=popupFor(doc,trigger);return popup && [...popup.querySelectorAll('input')].find(e=>visible(e) && /search/i.test(e.id+e.getAttribute('placeholder')));
     },id==='condition'?500:1800).catch(()=>null);
     if(search)setNativeValue(search,target);
     let chosen;
-    await waitFor(()=>{
+    const findChoice=()=>{
       const scope=popupFor(doc,trigger) || doc;
       const nodes=[...scope.querySelectorAll('[role=option],[role=radio]')].filter(visible);
       const matches=nodes.map(el=>optionInfo(el,target)).filter(Boolean).filter(info=>id!=='category' || path.length===1 || fold(info.path.join(' > '))===fold(path.slice(0,-1).join(' > ')));
-      if(matches.length!==1)return null;chosen=matches[0];return chosen;
-    },4500);
-    const choice=chosen.el;
-    {
-      const radio=choice.matches('input[type=radio]')?choice:choice.querySelector('input[type=radio]');
-      // Mobile bottom sheets may bind selection to the nested radio/label.
-      const label=radio && [...choice.querySelectorAll('label')].find(l=>l.htmlFor===radio.id);
-      (visible(radio)?radio:visible(label)?label:choice).click();
+      return matches.length===1?matches[0]:null;
+    };
+    chosen=await waitFor(findChoice,4500);
+    const menuRoot=popupFor(doc,trigger,chosen.el);
+    const closed=()=>doc.getElementById(id)?.getAttribute('aria-expanded')!=='true' && fold(selectedText(doc.getElementById(id)))===fold(target) && !findChoice() && (!menuRoot || !menuRoot.isConnected || !visible(menuRoot)) && (!search || !visible(doc.getElementById(search.id)));
+    // Selection belongs to the live component. A nested native checked flag alone is not enough.
+    if(!isVintedSelected(chosen.el))chosen.el.click();
+    try{await waitFor(()=>isVintedSelected(findChoice()?.el)||closed(),500);}catch{
+      const cell=findChoice()?.el;
+      const radio=cell?.matches('input[type=radio]')?cell:cell?.querySelector('input[type=radio]');
+      if(radio && !radio.disabled)radio.click(); // only the same exact option, once
     }
-    const closed=()=>trigger.getAttribute('aria-expanded')!=='true' && fold(selectedText(doc.getElementById(id)))===fold(target) && (!choice.isConnected || !visible(choice));
-    await waitFor(()=>isVintedSelected(choice)||closed(),3500);
+    await waitFor(()=>isVintedSelected(findChoice()?.el)||closed(),3500);
     // Only exact confirmation labels; never Add/Publish/Save draft.
     const confirm=await waitFor(()=>{
       if(closed())return {closed:true};
-      const scope=popupFor(doc,trigger,choice) || doc;
-      const buttons=[...scope.querySelectorAll('button')].filter(e=>visible(e) && ['fait','listo','hecho','done'].includes(fold(e.textContent)));
+      if(!isVintedSelected(findChoice()?.el))return null;
+      const scope=popupFor(doc,trigger,findChoice()?.el) || doc;
+      const buttons=[...scope.querySelectorAll('button')].filter(e=>visible(e) && e.getAttribute('aria-disabled')!=='true' && ['fait','listo','hecho','done'].includes(fold(e.textContent)));
       if(buttons.length===1)return {button:buttons[0]};return null;
-    },2500);
-    if(confirm.button){if(!isVintedSelected(choice))throw new Error('Option non sélectionnée : confirmation annulée.');confirm.button.click();}
-    await waitFor(()=>fold(selectedText(doc.getElementById(id)))===fold(target) && doc.getElementById(id)?.getAttribute('aria-expanded')!=='true' && (!choice.isConnected || !visible(choice)),4500);
+    },4500);
+    if(confirm.button){if(!isVintedSelected(findChoice()?.el))throw new Error('Option non sélectionnée : confirmation annulée.');confirm.button.click();}
+    await waitForStable(closed,300);
     return `Sélection vérifiée : ${chosen.title}${id==='category' && chosen.path.length?' ('+chosen.path.join(' > ')+')':''}`;
   }catch(e){throw new Error(`${id} : ${errorMessage(e)}`);}
 }
-async function selectVintedShipping(doc,value) {
+function vintedShippingSize(value){
   const aliases={petit:1,pequeno:1,small:1,moyen:2,mediano:2,medium:2,grand:3,grande:3,large:3};const size=aliases[fold(value)];
   if(!size)throw new Error('Format du colis non reconnu ou manquant dans la fiche.');
-  const radio=await waitFor(()=>doc.getElementById(`package_type_selector_${size}`),4500);
-  if(!isVintedSelected(radio)) {
-    const button=doc.getElementById(`package-size-${size}`);
-    const label=[...doc.querySelectorAll('label')].find(l=>l.htmlFor===radio.id);
-    const control=[button,label,radio].find(visible);if(!control)throw new Error('Choix du colis non accessible.');control.click();
+  return size;
+}
+function shippingSelected(doc,size){
+  const radio=doc.getElementById(`package_type_selector_${size}`),cell=doc.getElementById(`package-size-${size}`);
+  if(!radio || !cell || !visible(cell) || !radio.checked)return false;
+  if([...doc.querySelectorAll('input[id^="package_type_selector_"]:checked')].some(e=>e!==radio))return false;
+  if(cell.hasAttribute('aria-checked') && cell.getAttribute('aria-checked')!=='true')return false;
+  // The real Vinted selected cell becomes role=presentation; unselected cells remain role=button.
+  const cells=[...doc.querySelectorAll('[id^="package-size-"]')];
+  if(cells.some(e=>e.getAttribute('role')==='presentation') && cell.getAttribute('role')!=='presentation')return false;
+  return true;
+}
+async function selectVintedShipping(doc,value) {
+  const size=vintedShippingSize(value);
+  await waitFor(()=>{const cell=doc.getElementById(`package-size-${size}`);return visible(cell) && doc.getElementById(`package_type_selector_${size}`);},6000);
+  for(let attempt=0;attempt<2;attempt++){
+    if(!shippingSelected(doc,size)) {
+      const cell=doc.getElementById(`package-size-${size}`),radio=doc.getElementById(`package_type_selector_${size}`);
+      const label=[...cell.querySelectorAll('label')].find(l=>l.htmlFor===radio.id) || [...doc.querySelectorAll('label')].find(l=>l.htmlFor===radio.id);
+      const control=[cell,label,radio].find(visible);if(!control)throw new Error('Choix du colis non accessible.');control.click();
+      try{await waitFor(()=>shippingSelected(doc,size),600);}catch{const liveRadio=doc.getElementById(`package_type_selector_${size}`);if(liveRadio && !liveRadio.disabled)liveRadio.click();}
+    }
+    try{await waitForStable(()=>shippingSelected(doc,size),900,2200);return `Colis vérifié : ${value}`;}catch{if(attempt===1)throw new Error('Le colis demandé ne reste pas sélectionné. Vérifiez le format dans Vinted.');}
   }
-  await waitFor(()=>isVintedSelected(doc.getElementById(`package_type_selector_${size}`)),3500);
-  return `Colis vérifié : ${value}`;
 }
 async function applyVintedProduct(doc,product,report,{photos=true}={}) {
   const hadContent=['title','description'].some(id=>String(doc.getElementById(id)?.value || '').trim());
@@ -615,7 +651,6 @@ async function applyVintedProduct(doc,product,report,{photos=true}={}) {
   await attempt('price',()=>setVintedPrice(doc,product.price));
   await attempt('category',()=>selectVintedChoice(doc,'category',product.category));
   for(const key of ['brand','condition'])await attempt(key,()=>{if(results.category?.startsWith('Manuel'))throw new Error('Choisissez et confirmez la catégorie avant ce champ.');return selectVintedChoice(doc,key,product[key]);});
-  await attempt('shipping',()=>selectVintedShipping(doc,product.shipping));
   if(photos)await attempt('photos',async()=>{
     if(hadContent)throw new Error('Le formulaire contenait déjà du texte : ajout automatique de photos désactivé pour éviter les doublons.');
     const inputs=[...doc.querySelectorAll('input[type=file]')].filter(e=>!e.disabled && e.multiple);
@@ -623,6 +658,15 @@ async function applyVintedProduct(doc,product,report,{photos=true}={}) {
     const files=await preparedFiles({photos:product.photos});transferFiles(inputs[0],files);
     results.photos='Fichiers transmis au sélecteur ; téléversement à vérifier';
   });
+  // Photos/category loading can rebuild parcel controls. Select the requested parcel last.
+  const verifyCategory=async()=>{
+    const target=parts(product.category).at(-1);
+    await waitForStable(()=>{const trigger=doc.getElementById('category');return trigger && fold(selectedText(trigger))===fold(target) && trigger.getAttribute('aria-expanded')!=='true' && !visible(doc.getElementById('catalog-search-input'));},400);
+    return results.category;
+  };
+  if(!results.category?.startsWith('Manuel'))await attempt('category',verifyCategory);
+  await attempt('shipping',()=>{if(results.category?.startsWith('Manuel'))throw new Error('Choisissez et confirmez la catégorie avant ce champ.');return selectVintedShipping(doc,product.shipping);});
+  if(!results.category?.startsWith('Manuel'))await attempt('category',verifyCategory);
   // Additional category attributes have no mapping in V1/V2: never guess them.
   results.dynamic='Manuel : vérifiez tous les champs supplémentaires de la catégorie';report({...results});return results;
 }
@@ -704,7 +748,13 @@ const APP_CSS = ":host{all:initial;font:16px -apple-system,BlinkMacSystemFont,\"
 async function launchVintedTest(product) {
   if(!hasBridge()){await startPreparation(product);status('Transfert extension indisponible : préparation manuelle ouverte.');return;}
   const t=await stageTransfer(product);
-  main.innerHTML=`<button id="test-back">← Retour à la fiche</button><h2>Transfert prêt</h2><p>Produit et photos enregistrés dans le stockage de Violentmonkey ; transfert valable 24 heures. Aucun serveur de transfert.</p><a class="primary vinted-link" href="https://www.vinted.es/items/new#orion=${encodeURIComponent(t.nonce)}" target="_blank" rel="noopener noreferrer">Ouvrir Vinted et préremplir (test) ↗</a><p>Expérimental : contrôlez tous les champs et les images. Le script ne publie ni ne sauvegarde de brouillon. Les valeurs supplémentaires inconnues restent manuelles.</p><button id="manual-prep">Utiliser la préparation manuelle</button>`;
+  const link=`https://www.vinted.es/items/new#orion=${encodeURIComponent(t.nonce)}`;
+  main.innerHTML=`<button id="test-back">← Retour à la fiche</button><h2>Transfert prêt</h2><p>Produit et photos enregistrés dans le stockage de Violentmonkey ; transfert valable 24 heures. Aucun serveur de transfert.</p><a class="primary vinted-link" href="${link}" target="_self" rel="noreferrer">Ouvrir Vinted et préremplir (test) ↗</a><p>Ouverture dans cet onglet. Si iOS ouvre l’app Vinted, copiez le lien ci-dessous et collez-le dans la barre d’adresse d’Orion. Si Orion propose l’app, choisissez Jamais. Un script ne peut pas imposer ce choix à iOS.</p><button id="copy-vinted-link">Copier le lien pour Orion</button><textarea id="vinted-link-fallback" readonly hidden aria-label="Lien à coller dans Orion" rows="3"></textarea><p id="vinted-link-status" role="status"></p><p>Expérimental : contrôlez tous les champs et les images. Le script ne publie ni ne sauvegarde de brouillon. Les valeurs supplémentaires inconnues restent manuelles.</p><button id="manual-prep">Utiliser la préparation manuelle</button>`;
+  bind('#copy-vinted-link',async()=>{
+    const message=main.querySelector('#vinted-link-status');
+    try{await navigator.clipboard.writeText(link);message.textContent='Lien copié. Collez-le dans la barre d’adresse d’Orion.';}
+    catch{const field=main.querySelector('#vinted-link-fallback');field.value=link;field.hidden=false;field.focus();field.select();message.textContent='Appuyez longuement sur le lien sélectionné, puis Copier. Collez-le dans la barre d’adresse d’Orion.';}
+  });
   bind('#test-back',()=>preview(product.id));bind('#manual-prep',()=>startPreparation(product));
 }
 async function initVintedAssistant(){

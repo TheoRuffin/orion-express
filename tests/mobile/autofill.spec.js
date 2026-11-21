@@ -11,7 +11,10 @@ async function setup(context,page){
  await page.getByRole('button',{name:'Créer « Jeu de cartes » à 10 €'}).click();await page.getByLabel('Description',{exact:true}).fill('Texte exact');await page.getByLabel('Catégorie',{exact:true}).fill('Loisirs > Jeux de société');await page.getByLabel('Marque',{exact:true}).fill('Sans marque');await page.getByLabel('État',{exact:true}).selectOption('Très bon état');await page.getByLabel('Format du colis',{exact:true}).fill('Petit');
  await page.locator('#photos').setInputFiles([{name:'one.png',mimeType:'image/png',buffer:Buffer.from('first')},{name:'two.png',mimeType:'image/png',buffer:Buffer.from('second')}]);await page.getByRole('button',{name:'Enregistrer la fiche'}).click();
  await page.getByRole('button',{name:'Préparer sur Vinted',exact:true}).click();
- const popup=page.waitForEvent('popup');await page.getByRole('link',{name:'Ouvrir Vinted et préremplir (test) ↗'}).click();const form=await popup;await form.waitForLoadState();await form.addScriptTag({content:script});await form.getByRole('button',{name:'Ouvrir Orion',exact:true}).click();return {form,values};
+ const link=page.getByRole('link',{name:'Ouvrir Vinted et préremplir (test) ↗'});await expect(link).toHaveAttribute('target','_self');
+ await page.evaluate(()=>{Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.copiedLink=text;}}});});await page.getByRole('button',{name:'Copier le lien pour Orion'}).click();expect(await page.evaluate(()=>window.copiedLink)).toBe(await link.getAttribute('href'));
+ await page.evaluate(()=>{Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async()=>{throw new Error('permission');}}});});await page.getByRole('button',{name:'Copier le lien pour Orion'}).click();await expect(page.getByRole('textbox',{name:'Lien à coller dans Orion'})).toHaveValue(await link.getAttribute('href'));
+ await link.click();await page.waitForURL('https://www.vinted.es/items/new#orion=*');const form=page;await form.waitForLoadState();await form.addScriptTag({content:script});await form.getByRole('button',{name:'Ouvrir Orion',exact:true}).click();return {form,values};
 }
 test('transfert entre origines, textes exacts, FileList ordre/octets, champs dynamiques et aucune publication',async({context,page})=>{
  const {form}=await setup(context,page);await expect(form.locator('#orion-vinted-test').getByRole('status')).toContainText('Tentative terminée');
@@ -30,4 +33,11 @@ test('bouton compact repliable : dimensions tactiles et aucun masquage large du 
  await form.getByRole('button',{name:'Réduire Orion',exact:true}).click();await expect(form.locator('#orion-vinted-test').locator('#body')).toBeHidden();
  const box=await form.locator('#orion-vinted-test').boundingBox();expect(box.width).toBeLessThan(120);expect(box.height).toBeLessThan(65);expect(box.height).toBeGreaterThanOrEqual(44);
  await form.screenshot({path:'tests/vinted-compact.png'});await form.getByRole('button',{name:'Ouvrir Orion',exact:true}).click();await expect(form.locator('#orion-vinted-test').getByRole('status')).toBeVisible();
+});
+
+test('reconstruction après photos : colis Petit conservé avec les deux photos et catégorie finale',async({context,page})=>{
+ await context.addInitScript(()=>{window.photoResetsParcel=true;window.rerenderParcel=true;});
+ const {form}=await setup(context,page);await expect(form.locator('#orion-vinted-test').getByRole('status')).toContainText('Tentative terminée');
+ await expect(form.locator('#package_type_selector_1')).toBeChecked();await expect(form.locator('#package_type_selector_2')).not.toBeChecked();await expect(form.locator('#category')).toHaveText('Jeux de société');
+ expect(await form.evaluate(()=>[state.shipping,state.categoryPath,changes,!!window.submitted])).toEqual([1,'Loisirs',1,false]);expect(await form.locator('input[type=file]').evaluate(async e=>Promise.all([...e.files].map(f=>f.text())))).toEqual(['first','second']);
 });

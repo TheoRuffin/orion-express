@@ -5,9 +5,9 @@
 <label for="title">Titre</label><input id="title"><label for="description">Description</label><textarea id="description"></textarea><label for="price">Prix</label><input id="price" value="0,00">
 <button type="button" id="category" aria-expanded="false" onclick="openChoice('category')">Catégorie</button>
 <div id="dependent" hidden><button type="button" id="brand" aria-expanded="false" onclick="openChoice('brand')">Marque</button><button type="button" id="condition" aria-expanded="false" onclick="openChoice('condition')">État</button></div>
-<button type="button" id="package-size-1" onclick="parcel(1)">Petit</button><input id="package_type_selector_1" type="radio" hidden>
-<button type="button" id="package-size-2" onclick="parcel(2)">Moyen</button><input id="package_type_selector_2" type="radio" hidden checked>
-<button type="button" id="package-size-3" onclick="parcel(3)">Grand</button><input id="package_type_selector_3" type="radio" hidden>
+<div id="packages"><div id="package-size-1" role="button" onclick="parcelClick(event,1)"><span>Petit</span><label for="package_type_selector_1"><input id="package_type_selector_1" type="radio" aria-labelledby="package-size-1"></label></div>
+<div id="package-size-2" role="presentation" onclick="parcelClick(event,2)"><span>Moyen</span><label for="package_type_selector_2"><input id="package_type_selector_2" type="radio" aria-labelledby="package-size-2" checked></label></div>
+<div id="package-size-3" role="button" onclick="parcelClick(event,3)"><span>Grand</span><label for="package_type_selector_3"><input id="package_type_selector_3" type="radio" aria-labelledby="package-size-3"></label></div></div>
 <input type="file" multiple><button>Ajouter</button><button>Publier</button></form>
 <div role="dialog" id="popup" hidden><div id="options"></div><button type="button" id="done" onclick="finishChoice()">Fait</button></div>
 <script>
@@ -16,7 +16,49 @@ document.querySelector('input[type=file]').addEventListener('change',()=>window.
 const price=document.querySelector('#price');price.addEventListener('input',()=>{state.price=Number(price.value);if(!Number.isFinite(state.price))price.value='NaN €';});price.addEventListener('blur',()=>setTimeout(()=>{price.value=Number.isFinite(state.price)?state.price.toFixed(2).replace('.',',')+'\u00a0€':'NaN €';},80));
 const choices={category:[['Jeux de société','Loisirs'],['Jeux de société','Enfants > Jeux et jouets'],['Jeux de société junior','Loisirs']],brand:[['Sans marque',''],['Autre marque','']],condition:[['Neuf avec étiquette','Article neuf avec étiquettes et emballage.'],['Neuf sans étiquette','Article neuf sans étiquettes.'],['Très bon état','Article très peu utilisé, de légères imperfections.'],['Bon état','Article porté quelques fois.']]};
 let active,pending;
-function openChoice(id){active=id;pending=null;document.getElementById(id).setAttribute('aria-expanded','true');popup.hidden=false;done.disabled=id==='condition';options.innerHTML='';if(id!=='condition'){const search=document.createElement('input');search.id=id==='category'?'catalog-search-input':id+'-search-input';options.append(search);}setTimeout(()=>{for(const [i,item]of (id==='condition'&&window.conditionOptions?window.conditionOptions:choices[id]).entries()){const row=document.createElement('div');row.id=id+'-result-'+i;row.setAttribute('role','radio');row.setAttribute('aria-checked','false');row.innerHTML='<div><div><div class="web_ui__Cell__title">'+item[0]+'</div></div><div class="web_ui__Cell__body">'+item[1]+'</div></div><label for="radio-'+id+'-'+i+'"><input id="radio-'+id+'-'+i+'" type="radio"></label>';row.querySelector('input').addEventListener('click',e=>{if(id==='condition'&&!window.conditionNativeHandlerOnly)e.stopPropagation();});row.addEventListener('click',event=>{if(id==='condition'&&window.conditionNativeHandlerOnly&&!event.target.matches('input'))return;if(id==='condition'&&window.fakeNativeConditionOnly){row.querySelector('input').checked=true;return;}for(const el of options.querySelectorAll('[role=radio]')){el.setAttribute('aria-checked','false');el.querySelector('input').checked=false;}row.setAttribute('aria-checked','true');row.querySelector('input').checked=true;pending=item;if(id==='condition')setTimeout(()=>done.disabled=false,window.conditionDelay??80);if(window.desktop)finishChoice();});options.append(row);}},120);}
-function finishChoice(){if(!pending)return;if(active==='condition'){const selected=options.querySelector('[aria-checked=true]');window.conditionBeforeConfirm={semantic:!!selected,native:!!selected?.querySelector('input').checked,enabled:!done.disabled};}state[active]=pending[0];if(active==='category')state.categoryPath=pending[1];document.getElementById(active).textContent=pending[0];document.getElementById(active).setAttribute('aria-expanded','false');confirmations.push(active);popup.hidden=!(active==='condition'&&window.keepConditionMenuOpen);if(active==='category')setTimeout(()=>dependent.hidden=false,150);}
-function parcel(n){state.shipping=n;for(let i=1;i<=3;i++)document.getElementById('package_type_selector_'+i).checked=i===n;}
+function openChoice(id){
+ active=id;pending=null;document.getElementById(id).setAttribute('aria-expanded','true');popup.hidden=false;done.disabled=true;options.innerHTML='';
+ if(id!=='condition'){const search=document.createElement('input');search.id=id==='category'?'catalog-search-input':id+'-search-input';options.append(search);}
+ setTimeout(renderRows,120);
+}
+function renderRows(){
+ for(const row of options.querySelectorAll('[role=radio]'))row.remove();
+ const id=active;
+ for(const [i,item]of (id==='condition'&&window.conditionOptions?window.conditionOptions:choices[id]).entries()){
+  const row=document.createElement('div');row.id=id+'-result-'+i;row.setAttribute('role','radio');row.setAttribute('aria-checked',String(pending===item));
+  row.innerHTML='<div><div><div class="web_ui__Cell__title">'+item[0]+'</div></div><div class="web_ui__Cell__body">'+item[1]+'</div></div><label for="radio-'+id+'-'+i+'"><input id="radio-'+id+'-'+i+'" type="radio"></label>';
+  row.querySelector('input').checked=pending===item;
+  const nativeOnly=id==='condition'?window.conditionNativeHandlerOnly:window.choiceNativeHandlerOnly;
+  row.querySelector('input').addEventListener('click',e=>{if(!nativeOnly)e.stopPropagation();});
+  row.addEventListener('click',event=>{
+   if(nativeOnly&&!event.target.matches('input'))return;
+   if((id==='condition'&&window.fakeNativeConditionOnly)||(id!=='condition'&&window.fakeNativeChoiceOnly)){row.querySelector('input').checked=true;return;}
+   for(const el of options.querySelectorAll('[role=radio]')){el.setAttribute('aria-checked','false');el.querySelector('input').checked=false;}
+   row.setAttribute('aria-checked','true');row.querySelector('input').checked=true;pending=item;
+   if(window.rerenderChoice)renderRows();
+   setTimeout(()=>done.disabled=false,id==='condition'?(window.conditionDelay??80):(window.choiceDelay??80));
+   if(window.desktop)finishChoice();
+  });options.append(row);
+ }
+}
+function finishChoice(){
+ if(!pending)return;
+ const selected=options.querySelector('[aria-checked=true]');window.choiceBeforeConfirm={semantic:!!selected,native:!!selected?.querySelector('input').checked,enabled:!done.disabled};
+ if(active==='condition')window.conditionBeforeConfirm=window.choiceBeforeConfirm;
+ state[active]=pending[0];if(active==='category')state.categoryPath=pending[1];document.getElementById(active).textContent=pending[0];document.getElementById(active).setAttribute('aria-expanded','false');confirmations.push(active);
+ popup.hidden=!((active==='condition'&&window.keepConditionMenuOpen)||(active!=='condition'&&window.keepChoiceMenuOpen));
+ if(active==='category')setTimeout(()=>dependent.hidden=false,150);
+}
+function parcel(n){
+ state.shipping=n;
+ for(let i=1;i<=3;i++){document.getElementById('package_type_selector_'+i).checked=i===n;document.getElementById('package_type_selector_'+i).toggleAttribute('checked',i===n);document.getElementById('package-size-'+i).setAttribute('role',i===n?'presentation':'button');}
+ if(window.rerenderParcel)packages.innerHTML=packages.innerHTML;
+}
+function parcelClick(event,n){
+ if(window.fakeNativeParcelOnly){document.getElementById('package_type_selector_'+n).checked=true;return;}
+ if(window.parcelNativeHandlerOnly&&!event.target.matches('input'))return;
+ parcel(n);
+ if(window.revertParcelOnce){window.revertParcelOnce=false;setTimeout(()=>parcel(2),450);}
+}
+document.querySelector('input[type=file]').addEventListener('change',()=>{if(window.photoResetsParcel)setTimeout(()=>parcel(2),200);});
 </script>

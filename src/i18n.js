@@ -2,6 +2,12 @@
 let orionLanguage='es';
 const LANGUAGE_KEY='orion-express-language';
 const ES={
+'Copier le lien pour Orion':'Copiar enlace para Orion',
+'Lien à coller dans Orion':'Enlace para pegar en Orion',
+'Lien copié. Collez-le dans la barre d’adresse d’Orion.':'Enlace copiado. Pégalo en la barra de direcciones de Orion.',
+'Appuyez longuement sur le lien sélectionné, puis Copier. Collez-le dans la barre d’adresse d’Orion.':'Mantén pulsado el enlace seleccionado y elige Copiar. Pégalo en la barra de direcciones de Orion.',
+'Ouverture dans cet onglet. Si iOS ouvre l’app Vinted, copiez le lien ci-dessous et collez-le dans la barre d’adresse d’Orion. Si Orion propose l’app, choisissez Jamais. Un script ne peut pas imposer ce choix à iOS.':'Se abre en esta pestaña. Si iOS abre la app de Vinted, copia el enlace de abajo y pégalo en la barra de direcciones de Orion. Si Orion ofrece abrir la app, elige Nunca. Un script no puede imponer esta elección a iOS.',
+'Le colis demandé ne reste pas sélectionné. Vérifiez le format dans Vinted.':'El paquete solicitado no permanece seleccionado. Comprueba el tamaño en Vinted.',
 'Choisir un état précis':'Elegir un estado preciso',
 'Neuf avec étiquette':'Nuevo con etiquetas','Neuf sans étiquette':'Nuevo sin etiquetas','Très bon état':'Muy bueno','Bon état':'Bueno','Satisfaisant':'Satisfactorio',
 'État ambigu : choisissez Neuf avec étiquette ou Neuf sans étiquette dans la fiche produit.':'Estado ambiguo: elige Nuevo con etiquetas o Nuevo sin etiquetas en la ficha del producto.',

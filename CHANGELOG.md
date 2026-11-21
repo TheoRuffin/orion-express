@@ -1,5 +1,13 @@
 # Historique
 
+## 3.2.3 — 21 novembre 2026
+
+- Catégorie/marque : clic sur la cellule du composant, radio et aria vérifiés conjointement, relecture après recréation du DOM, confirmation active et fermeture effective obligatoires. Une coche native isolée ne suffit plus.
+- Catégorie relue après les photos et après le choix du colis. Les correspondances ambiguës restent refusées.
+- Colis choisi après l’ajout des photos, contrôle du choix exclusif et de la stabilité du composant, une reprise bornée du même choix en cas de retour à la suggestion.
+- Ouverture Vinted dans le même onglet, bouton de copie du lien complet et secours si le presse-papiers est refusé. Aucune garantie de forcer le gestionnaire de liens universels iOS.
+- Tests contrôlés de confirmation mobile, DOM renouvelé, défaut Moyen, reset tardif, FR/ES, photos et navigation. Stockage, fichiers originaux et module d’état 3.2.2 inchangés.
+
 ## 3.2.2 — 16 novembre 2026
 
 - Correctif ciblé de l’état : correspondances explicites FR/ES, cellule sémantique, radio effectif et confirmation Fait active.

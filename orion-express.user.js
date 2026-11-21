@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name Orion Express
 // @namespace https://github.com/TheoRuffin/orion-express
-// @version 3.2.5
+// @version 3.2.6
 // @description Catálogo local y rellenado experimental en Vinted España, sin publicar.
 // @description:fr Catalogue local et préremplissage expérimental Vinted Espagne, sans publication.
 // @match https://example.com/*
@@ -24,6 +24,9 @@
 let orionLanguage='es';
 const LANGUAGE_KEY='orion-express-language';
 const ES={
+'Chemin de catégorie à confirmer.':'Ruta de categoría por confirmar.',
+'Préparation en cours : photos puis caractéristiques…':'Preparación en curso: fotos y después características…',
+"Champ":"Campo","Fiche enregistrée":"Ficha guardada","Lu dans Vinted":"Valor en Vinted","Contrôle":"Comprobación","Choix enregistrés dans la fiche":"Opciones guardadas en la ficha","Choix de la fiche et contrôle actuel":"Opciones de la ficha y comprobación actual","Valeur vérifiée.":"Valor comprobado.","Valeur manquante dans la fiche.":"Falta este valor en la ficha.","Champ absent ou ambigu.":"Campo ausente o ambiguo.","Champ non accessible.":"Campo no accesible.","Menu encore ouvert.":"El menú sigue abierto.","Valeur différente de la fiche.":"Valor distinto al de la ficha.","État de la fiche à préciser.":"Especifica el estado en la ficha.","État non reconnu dans Vinted.":"Estado no reconocido en Vinted.","Format du colis à préciser.":"Especifica el tamaño del paquete.","Plusieurs colis sélectionnés.":"Hay varios paquetes seleccionados.","Sélection du colis non confirmée.":"Selección del paquete sin confirmar.",
 "Vinted s’ouvre dans l’app ?":"¿Vinted se abre en la app?","Dans Orion : Réglages → Général → App Opener. Si une règle vinted.es ou www.vinted.es est présente, choisissez Never / Jamais. Si nécessaire, remettez la règle sur Ask / Demander, puis relancez le bouton et choisissez Never. Le balayage de droite à gauche retire uniquement cette règle, sans effacer les fiches.":"En Orion: Ajustes → General → App Opener. Si aparece una regla de vinted.es o www.vinted.es, elige Never / Nunca. Si hace falta, cambia la regla a Ask / Preguntar, pulsa el botón de nuevo y elige Never. Deslizar de derecha a izquierda elimina solo esa regla, sin borrar las fichas.",
 "Le bouton charge le formulaire dans cet onglet Orion.":"El botón carga el formulario en esta pestaña de Orion.","Si Orion propose l’app Vinted, choisissez Jamais. Si l’app s’ouvre encore, utilisez Copier le lien pour Orion et collez le lien complet dans la barre d’adresse. Le lien spécial Orion a été retiré car il échouait sur iPhone.":"Si Orion ofrece la app de Vinted, elige Nunca. Si se abre la app de nuevo, usa Copiar enlace para Orion y pega el enlace completo en la barra de direcciones. Se ha retirado el enlace especial de Orion porque fallaba en iPhone.","Aucune confirmation du formulaire. Si l’app s’ouvre, collez le lien complet dans la barre d’adresse d’Orion. Aucun second onglet automatique.":"Sin confirmación del formulario. Si se abre la app, pega el enlace completo en la barra de direcciones de Orion. No se abre otra pestaña automáticamente.",
 'Formulaire Orion reconnu. Consultez l’onglet Vinted pour vérifier le résultat.':'Formulario en Orion reconocido. Consulta la pestaña de Vinted para revisar el resultado.',
@@ -514,7 +517,16 @@ function transferFiles(input,files) {
   if(input.files.length!==files.length)throw new Error('Le navigateur refuse le transfert des photos.');
   input.dispatchEvent(new Event('change',{bubbles:true}));input.dispatchEvent(new Event('input',{bubbles:true}));
 }
-const visible=e=>!!e && !!(e.getClientRects().length) && !e.disabled;
+const visible=e=>{
+  if(!e || typeof e.getClientRects!=='function' || !e.isConnected || !e.getClientRects().length || e.matches(':disabled'))return false;
+  const view=e.ownerDocument?.defaultView;
+  for(let node=e;node?.nodeType===1;node=node.parentElement){
+    if(node.hidden || node.hasAttribute('inert') || node.getAttribute('aria-hidden')==='true')return false;
+    const style=view?.getComputedStyle(node);
+    if(style && (style.display==='none' || ['hidden','collapse'].includes(style.visibility) || style.contentVisibility==='hidden'))return false;
+  }
+  return true;
+};
 function uniqueField(doc,id,tag='INPUT') {
   const list=[...doc.querySelectorAll(`[id="${id}"]`)].filter(e=>e.tagName===tag && visible(e));
   if(list.length!==1)throw new Error(`Champ ${id} introuvable ou ambigu. Formulaire modifié ou non chargé.`);
@@ -556,6 +568,14 @@ async function waitForStable(find,stableMs=700,ms=4500){
 }
 const selectedText=e=>e?.querySelector('[data-testid$="--value"]')?.textContent ?? (e?.matches('input,select')?e.value:e?.textContent) ?? '';
 function parts(value){return String(value).split(/\s*(?:>|›)\s*/).map(v=>v.trim()).filter(Boolean);}
+// A visible leaf label alone cannot prove the requested category hierarchy.
+const vintedCategoryEvidence=new WeakMap();
+function clearVintedCategoryEvidence(doc){vintedCategoryEvidence.delete(doc);}
+function categoryEvidencePath(value){return parts(value).map(fold).join(' > ');}
+function hasVintedCategoryEvidence(doc,value,actual){
+  const evidence=vintedCategoryEvidence.get(doc);
+  return !!evidence && evidence.path===categoryEvidencePath(value) && evidence.leaf===fold(actual);
+}
 function optionInfo(el,target) {
   const leaves=[...el.querySelectorAll('div,span,label')].filter(n=>fold(n.textContent)===fold(target));
   const matches=fold(el.textContent)===fold(target) || leaves.length>0 || fold(el.getAttribute('aria-label'))===fold(target);
@@ -566,13 +586,36 @@ function optionInfo(el,target) {
   return {el,title:String(title).trim(),path:parts(body)};
 }
 function popupFor(doc,trigger,option) {
-  const owned=doc.getElementById(trigger.getAttribute('aria-controls') || '');
-  return owned || option?.closest('[role=dialog],[role=menu],[role=listbox],[data-radix-popper-content-wrapper]') || [...doc.querySelectorAll('[role=dialog],[role=menu],[role=listbox],[data-radix-popper-content-wrapper]')].filter(visible).at(-1);
+  const selector='[role=dialog],[role=menu],[role=listbox],[data-radix-popper-content-wrapper]';
+  // The mobile dialog owns its footer; an inner listbox need not contain its Fait button.
+  const scopeFor=node=>{
+    const dialog=node.closest('[role=dialog]');
+    if(visible(dialog))return dialog;
+    const scope=node.matches(selector)?node:node.closest(selector);
+    return visible(scope)?scope:null;
+  };
+  if(visible(option)){const scope=scopeFor(option);if(scope)return scope;}
+  const owned=String(trigger?.getAttribute('aria-controls') || '').split(/\s+/).filter(Boolean).map(id=>doc.getElementById(id)).filter(visible);
+  for(const node of owned){const scope=scopeFor(node);if(scope)return scope;return node;}
+  const popups=[...doc.querySelectorAll(selector)].filter(visible);
+  if(trigger?.id){
+    const related=popups.filter(node=>String(node.getAttribute('aria-labelledby') || '').split(/\s+/).includes(trigger.id));
+    if(related.length)return scopeFor(related.at(-1));
+  }
+  return popups.filter(node=>node.getAttribute('role')==='dialog').at(-1) || popups.at(-1);
+}
+function pickerTrigger(doc,id){
+  const candidates=[...doc.querySelectorAll(`[id="${id}"]`)].filter(e=>e.isConnected&&!e.matches(':disabled'));
+  const active=candidates.filter(visible);if(active.length===1)return active[0];
+  // ReactModal makes the background inert/aria-hidden while its existing picker is open.
+  if(candidates.length===1 && visible(popupFor(doc,candidates[0])))return candidates[0];
+  return null;
 }
 async function selectVintedChoice(doc,id,value) {
   if(id==='condition')return selectVintedCondition(doc,value);
+  if(id==='category')clearVintedCategoryEvidence(doc);
   const path=parts(value);if(!path.length)throw new Error('Valeur manquante dans la fiche.');const target=path.at(-1);
-  const trigger=await waitFor(()=>{const list=[...doc.querySelectorAll(`[id="${id}"]`)].filter(visible);return list.length===1?list[0]:null;},4500);
+  const trigger=await waitFor(()=>pickerTrigger(doc,id),4500);
   const searchId=id==='category'?'catalog-search-input':`${id}-search-input`;
   const menuVisible=()=>visible(doc.getElementById(searchId)) || visible(popupFor(doc,trigger));
   if(fold(selectedText(trigger))===fold(target) && path.length===1 && trigger.getAttribute('aria-expanded')!=='true' && !menuVisible())return `Sélection vérifiée : ${target}`;
@@ -593,7 +636,7 @@ async function selectVintedChoice(doc,id,value) {
     };
     chosen=await waitFor(findChoice,4500);
     const menuRoot=popupFor(doc,trigger,chosen.el);
-    const closed=()=>doc.getElementById(id)?.getAttribute('aria-expanded')!=='true' && fold(selectedText(doc.getElementById(id)))===fold(target) && !findChoice() && (!menuRoot || !menuRoot.isConnected || !visible(menuRoot)) && (!search || !visible(doc.getElementById(search.id)));
+    const closed=()=>visible(doc.getElementById(id)) && doc.getElementById(id)?.getAttribute('aria-expanded')!=='true' && fold(selectedText(doc.getElementById(id)))===fold(target) && !findChoice() && (!menuRoot || !menuRoot.isConnected || !visible(menuRoot)) && (!search || !visible(doc.getElementById(search.id)));
     // Selection belongs to the live component. A nested native checked flag alone is not enough.
     if(!isVintedSelected(chosen.el))chosen.el.click();
     try{await waitFor(()=>isVintedSelected(findChoice()?.el)||closed(),500);}catch{
@@ -612,6 +655,7 @@ async function selectVintedChoice(doc,id,value) {
     },4500);
     if(confirm.button){if(!isVintedSelected(findChoice()?.el))throw new Error('Option non sélectionnée : confirmation annulée.');confirm.button.click();}
     await waitForStable(closed,300);
+    if(id==='category' && path.length>1)vintedCategoryEvidence.set(doc,{path:categoryEvidencePath(value),leaf:fold(target)});
     return `Sélection vérifiée : ${chosen.title}${id==='category' && chosen.path.length?' ('+chosen.path.join(' > ')+')':''}`;
   }catch(e){throw new Error(`${id} : ${errorMessage(e)}`);}
 }
@@ -646,7 +690,18 @@ async function selectVintedShipping(doc,value) {
 async function applyVintedProduct(doc,product,report,{photos=true}={}) {
   const hadContent=['title','description'].some(id=>String(doc.getElementById(id)?.value || '').trim());
   const results={};const attempt=async(key,fn)=>{try{const message=await fn();results[key]=message || 'À vérifier dans Vinted';}catch(e){results[key]='Manuel : '+errorMessage(e);}report({...results});};
-  // Text first: no submit, no buttons selected by generic text such as "Ajouter".
+  // Photos first: later category-dependent fields must follow native upload/loading updates.
+  if(photos)await attempt('photos',async()=>{
+    if(hadContent)throw new Error('Le formulaire contenait déjà du texte : ajout automatique de photos désactivé pour éviter les doublons.');
+    const inputs=[...doc.querySelectorAll('input[type=file]')].filter(e=>!e.disabled && e.multiple);
+    if(inputs.length!==1)throw new Error('Sélecteur photo absent ou ambigu.');
+    const files=await preparedFiles({photos:product.photos});transferFiles(inputs[0],files);
+    await waitForStable(()=>![...doc.querySelectorAll('[role=progressbar],[aria-busy="true"]')].some(visible),900,15000);
+    return 'Fichiers transmis au sélecteur ; téléversement à vérifier';
+  });
+  // Resume an already-open category modal before accessing its hidden background fields.
+  if(!photos)await attempt('category',()=>selectVintedChoice(doc,'category',product.category));
+  // No submit, no buttons selected by generic text such as "Ajouter".
   for(const key of ['title','description'])await attempt(key,async()=>{
     const el=uniqueField(doc,key,key==='description'?'TEXTAREA':'INPUT');
     const value=product[key];
@@ -654,22 +709,16 @@ async function applyVintedProduct(doc,product,report,{photos=true}={}) {
     setNativeValue(el,value);if(el.value!==String(value))throw new Error('Valeur non conservée par le formulaire.');
   });
   await attempt('price',()=>setVintedPrice(doc,product.price));
-  await attempt('category',()=>selectVintedChoice(doc,'category',product.category));
+  if(photos)await attempt('category',()=>selectVintedChoice(doc,'category',product.category));
   for(const key of ['brand','condition'])await attempt(key,()=>{if(results.category?.startsWith('Manuel'))throw new Error('Choisissez et confirmez la catégorie avant ce champ.');return selectVintedChoice(doc,key,product[key]);});
-  if(photos)await attempt('photos',async()=>{
-    if(hadContent)throw new Error('Le formulaire contenait déjà du texte : ajout automatique de photos désactivé pour éviter les doublons.');
-    const inputs=[...doc.querySelectorAll('input[type=file]')].filter(e=>!e.disabled && e.multiple);
-    if(inputs.length!==1)throw new Error('Sélecteur photo absent ou ambigu.');
-    const files=await preparedFiles({photos:product.photos});transferFiles(inputs[0],files);
-    results.photos='Fichiers transmis au sélecteur ; téléversement à vérifier';
-  });
-  // Photos/category loading can rebuild parcel controls. Select the requested parcel last.
+  // Recheck the precise condition after dependent loading, before the parcel. No new photos on retry.
   const verifyCategory=async()=>{
     const target=parts(product.category).at(-1);
     await waitForStable(()=>{const trigger=doc.getElementById('category');return trigger && fold(selectedText(trigger))===fold(target) && trigger.getAttribute('aria-expanded')!=='true' && !visible(doc.getElementById('catalog-search-input'));},400);
     return results.category;
   };
   if(!results.category?.startsWith('Manuel'))await attempt('category',verifyCategory);
+  if(!results.category?.startsWith('Manuel') && !results.condition?.startsWith('Manuel'))await attempt('condition',()=>selectVintedCondition(doc,product.condition));
   await attempt('shipping',()=>{if(results.category?.startsWith('Manuel'))throw new Error('Choisissez et confirmez la catégorie avant ce champ.');return selectVintedShipping(doc,product.shipping);});
   if(!results.category?.startsWith('Manuel'))await attempt('category',verifyCategory);
   // Additional category attributes have no mapping in V1/V2: never guess them.
@@ -715,11 +764,11 @@ const conditionSelected=cell=>{
 };
 async function selectVintedCondition(doc,value){
  const desired=resolveOrionCondition(value); // Reject "Neuf" before opening the menu.
- const trigger=await waitFor(()=>{const list=[...doc.querySelectorAll('[id="condition"]')].filter(visible);return list.length===1?list[0]:null;},4500);
+ const trigger=await waitFor(()=>pickerTrigger(doc,'condition'),4500);
  const currentMatches=()=>{try{return resolveOrionCondition(selectedText(doc.getElementById('condition'))).key===desired.key;}catch{return false;}};
  const menuAlreadyVisible=()=>{const scope=popupFor(doc,trigger);return scope && visible(scope) && [...scope.querySelectorAll('[role=radio],[role=option]')].some(cell=>visible(cell)&&conditionOfCell(cell));};
  if(currentMatches() && trigger.getAttribute('aria-expanded')!=='true' && !menuAlreadyVisible())return `État vérifié : ${selectedText(trigger)}`;
- if(trigger.getAttribute('aria-expanded')!=='true')trigger.click();
+ if(trigger.getAttribute('aria-expanded')!=='true' && !menuAlreadyVisible())trigger.click();
  let chosen;
  const findCell=()=>{
    const scope=popupFor(doc,trigger) || doc;
@@ -730,7 +779,7 @@ async function selectVintedCondition(doc,value){
  const menuRoot=popupFor(doc,trigger,chosen);
  // Click the actual semantic cell, not a nested radio whose DOM checked state can bypass the component.
  chosen.click();
- const closed=()=>currentMatches() && doc.getElementById('condition')?.getAttribute('aria-expanded')!=='true' && (!findCell()) && (!menuRoot || !menuRoot.isConnected || !visible(menuRoot));
+ const closed=()=>visible(doc.getElementById('condition')) && currentMatches() && doc.getElementById('condition')?.getAttribute('aria-expanded')!=='true' && (!findCell()) && (!menuRoot || !menuRoot.isConnected || !visible(menuRoot));
  // Some mobile variants bind only the native radio's change handler. Retry that same precise option once.
  try{await waitFor(()=>conditionSelected(findCell()) || closed(),500);}catch{const cell=findCell();const input=cell?.matches('input[type=radio]')?cell:cell?.querySelector('input[type=radio]');if(input && !input.disabled)input.click();}
  await waitFor(()=>conditionSelected(findCell()) || closed(),3500);
@@ -747,6 +796,125 @@ async function selectVintedCondition(doc,value){
  }
  await waitFor(closed,4500);
  return `État vérifié : ${selectedText(doc.getElementById('condition'))}`;
+}
+
+// Product strings stay unchanged until the user explicitly chooses a precise size.
+const ORION_SHIPPING=[
+ {key:'small',size:1,fr:'Petit',es:'Pequeño',aliases:['Pequeno']},
+ {key:'medium',size:2,fr:'Moyen',es:'Mediano',aliases:[]},
+ {key:'large',size:3,fr:'Grand',es:'Grande',aliases:[]}
+];
+const shippingKey=value=>String(value??'').normalize('NFD').replace(/\p{Diacritic}/gu,'').replace(/\s+/g,' ').trim().toLowerCase();
+function resolveOrionShipping(value){
+ const text=shippingKey(value);
+ const match=ORION_SHIPPING.find(option=>[option.key,option.fr,option.es,...option.aliases].some(alias=>shippingKey(alias)===text));
+ if(!match)throw new Error('Format du colis non reconnu ou manquant dans la fiche.');
+ return match;
+}
+function shippingEditorChoices(current=''){
+ let known;try{known=resolveOrionShipping(current);}catch{}
+ return [
+  {value:'',label:'Choisir un format précis',selected:!current},
+  ...(current&&!known?[{value:String(current),label:`Format actuel à préciser : ${current}`,selected:true}]:[]),
+  ...ORION_SHIPPING.map(option=>({value:known?.key===option.key?String(current):option.fr,label:option.fr,selected:known?.key===option.key}))
+ ];
+}
+
+// Read-only final values. Never opens a picker, changes a field or reads photos.
+function auditChoiceField(doc,id){
+ const nodes=[...doc.querySelectorAll(`[id="${id}"]`)];
+ const shown=nodes.filter(visible);
+ return shown.length===1?shown[0]:nodes.length===1?nodes[0]:null;
+}
+function auditChoiceMenuOpen(doc,trigger,key){
+ if(trigger?.getAttribute('aria-expanded')==='true')return true;
+ const searchId=key==='category'?'catalog-search-input':'condition-search-input';
+ if(visible(doc.getElementById(searchId)))return true;
+ const owned=String(trigger?.getAttribute('aria-controls') || '').split(/\s+/).filter(Boolean).map(id=>doc.getElementById(id));
+ if(owned.some(visible))return true;
+ const names=key==='category'?['categorie','categoria','category']:['etat','estado','condition'];
+ const scope=popupFor(doc,trigger);
+ if(!visible(scope))return false;
+ if(String(scope.getAttribute('aria-labelledby') || '').split(/\s+/).includes(trigger?.id))return true;
+ const labels=[scope.getAttribute('aria-label'),...[...scope.querySelectorAll('h1,h2,h3,[role=heading]')].filter(visible).map(node=>node.textContent)];
+ if(labels.some(label=>names.includes(fold(label || ''))))return true;
+ if(key==='condition')return [...scope.querySelectorAll('[role=radio],[role=option]')].filter(visible).some(cell=>{
+   const label=cell.querySelector('[data-testid$="--title"],[class*="Cell__title"]')?.textContent || cell.getAttribute('aria-label') || cell.textContent;
+   try{resolveOrionCondition(label);return true;}catch{return false;}
+ });
+ return false;
+}
+function auditTextChoice(doc,product,key){
+ const expected=String(product?.[key] ?? ''),trigger=auditChoiceField(doc,key),actual=String(selectedText(trigger)).trim();
+ const row={key,expected,actual,matches:false,reason:''};
+ const menuOpen=trigger && auditChoiceMenuOpen(doc,trigger,key);
+ if(key==='category' && menuOpen)clearVintedCategoryEvidence(doc);
+ if(!expected.trim()){row.reason='Valeur manquante dans la fiche.';return row;}
+ if(!trigger){row.reason='Champ absent ou ambigu.';return row;}
+ if(menuOpen){row.reason='Menu encore ouvert.';return row;}
+ if(!visible(trigger)){row.reason='Champ non accessible.';return row;}
+ if(key==='category'){
+   const target=parts(expected).at(-1);
+   row.matches=!!target && fold(actual)===fold(target);
+   if(row.matches && parts(expected).length>1 && !hasVintedCategoryEvidence(doc,expected,actual)){row.matches=false;row.reason='Chemin de catégorie à confirmer.';return row;}
+ }else{
+   let desired,current;
+   try{desired=resolveOrionCondition(expected);}catch{row.reason='État de la fiche à préciser.';return row;}
+   try{current=resolveOrionCondition(actual);}catch{row.reason='État non reconnu dans Vinted.';return row;}
+   row.matches=desired.key===current.key;
+ }
+ row.reason=row.matches?'Valeur vérifiée.':'Valeur différente de la fiche.';
+ return row;
+}
+function auditShippingDisplay(doc,radio){
+ const id=radio.id.slice('package_type_selector_'.length),cell=doc.getElementById('package-size-'+id);
+ const heading=cell?.querySelector('[data-testid$="--title"],[class*="Cell__title"]');
+ const text=String(heading?.textContent || cell?.textContent || radio.getAttribute('aria-label') || '').trim();
+ const candidates=[text,radio.getAttribute('aria-label'),...[...(heading || cell)?.querySelectorAll('span,div') || []].map(node=>node.textContent)];
+ const sizes=new Set();for(const candidate of candidates){try{sizes.add(vintedShippingSize(candidate));}catch{}}
+ return {text,size:sizes.size===1?[...sizes][0]:null};
+}
+function auditShippingChoice(doc,product){
+ const expected=String(product?.shipping ?? '');
+ const selected=[...doc.querySelectorAll('input[type=radio][id^="package_type_selector_"]:checked')];
+ const displayed=selected.map(radio=>auditShippingDisplay(doc,radio)),actual=displayed.map(value=>value.text).join(' / ');
+ const row={key:'shipping',expected,actual,matches:false,reason:''};
+ if(!expected.trim()){row.reason='Valeur manquante dans la fiche.';return row;}
+ let size;try{size=vintedShippingSize(expected);}catch{row.reason='Format du colis à préciser.';return row;}
+ if(selected.length>1){row.reason='Plusieurs colis sélectionnés.';return row;}
+ row.matches=selected.length===1 && displayed[0].size===size && shippingSelected(doc,size);
+ row.reason=row.matches?'Valeur vérifiée.':selected.length===1 && (selected[0].id!==`package_type_selector_${size}` || displayed[0].size!==null && displayed[0].size!==size)?'Valeur différente de la fiche.':'Sélection du colis non confirmée.';
+ return row;
+}
+function auditVintedChoices(doc,product){
+ return [auditTextChoice(doc,product,'category'),auditTextChoice(doc,product,'condition'),auditShippingChoice(doc,product)];
+}
+function watchVintedChoices(doc,product,onChange){
+ const view=doc.defaultView;
+ let stopped=false,queued=false,last;
+ const own=node=>{
+   const element=node?.nodeType===1?node:node?.parentElement;
+   return !!element?.closest?.('#orion-vinted-test,#orion-express-v2') || !!element?.getRootNode?.().host?.matches?.('#orion-vinted-test,#orion-express-v2');
+ };
+ const check=()=>{
+   if(stopped)return;
+   const rows=auditVintedChoices(doc,product),signature=JSON.stringify(rows);
+   if(signature!==last){last=signature;onChange(rows);}
+ };
+ const schedule=()=>{if(stopped||queued)return;queued=true;queueMicrotask(()=>{queued=false;check();});};
+ const onEvent=event=>{if(!own(event.composedPath?.()[0] || event.target))schedule();};
+ const observer=new view.MutationObserver(records=>{if(records.some(record=>!own(record.target)))schedule();});
+ observer.observe(doc.body,{subtree:true,childList:true,characterData:true,attributes:true});
+ doc.addEventListener('input',onEvent,true);doc.addEventListener('change',onEvent,true);
+ const timer=view.setInterval(check,1000);
+ const onPageHide=event=>{if(!event.persisted)stop();};
+ const onPageShow=event=>{if(event.persisted)schedule();};
+ function stop(){
+   if(stopped)return;stopped=true;observer.disconnect();view.clearInterval(timer);
+   doc.removeEventListener('input',onEvent,true);doc.removeEventListener('change',onEvent,true);
+   view.removeEventListener('pagehide',onPageHide);view.removeEventListener('pageshow',onPageShow);
+ }
+ view.addEventListener('pagehide',onPageHide);view.addEventListener('pageshow',onPageShow);check();return stop;
 }
 
 // Browser-owned navigation; a returned tab handle is never proof of a loaded form.
@@ -768,10 +936,21 @@ async function readVintedLaunchAck(nonce,since){
 }
 
 const APP_CSS = ":host{all:initial;font:16px -apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;color:#172b35}*{box-sizing:border-box}.shell{height:100%;overflow:auto;background:#f6f5ef;padding:24px max(20px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));-webkit-overflow-scrolling:touch}header,header>div,.toolbar,.stats,.card,dl>div{display:flex;align-items:center}header{justify-content:space-between;max-width:900px;margin:auto}header>div{display:block}small{font-size:10px;letter-spacing:.14em;font-weight:700;color:#55716f}h1{font-size:28px;letter-spacing:-1px;margin:5px 0 12px}h1 em{font-family:Georgia,serif;font-weight:400;color:#087b67}h2{font-size:30px;line-height:1.12;letter-spacing:-.8px;margin:14px 0 22px}h3{font-size:18px;margin:10px 0}p{line-height:1.6}button,a,input,textarea{font:inherit}button,a{touch-action:manipulation}button{min-height:46px;padding:11px 16px;border:1px solid #cbd7cf;background:#fff;color:#172b35;border-radius:12px;font-weight:600;cursor:pointer}button:disabled{opacity:.5;cursor:default}button:focus-visible,input:focus-visible,textarea:focus-visible,a:focus-visible{outline:3px solid #dc9a2b;outline-offset:3px}.primary{background:#087b67;border-color:#087b67;color:white}.origin{font-size:11px;max-width:900px;margin:8px auto 14px;color:#55716f}.hero{padding:28px;border-radius:22px;background:#e4ede4;margin-bottom:18px}.stats{gap:24px;margin-bottom:24px;font-size:13px}.stats b{display:block;font-size:27px}.toolbar{gap:8px;flex-wrap:wrap;margin:16px 0}.toolbar button{flex:1}.search{margin:24px 0 16px}label{display:block;font-weight:600;font-size:13px;margin:18px 0 8px}input,textarea{display:block;width:100%;margin-top:8px;padding:14px;border:1px solid #bdcbc3;border-radius:12px;background:white;color:#172b35;font-size:16px}textarea{resize:vertical}main,footer,#status{max-width:900px;margin:auto}.cards{display:grid;gap:12px}.card{width:100%;text-align:left;gap:16px;padding:14px}.card>div:nth-child(2){flex:1;min-width:0;overflow-wrap:anywhere}.card h3{font-size:18px;margin:5px 0}.card span{font-weight:400;font-size:13px}.thumb{width:64px;height:76px;flex-shrink:0;border-radius:10px;background:#eeeade;overflow:hidden;display:grid;place-items:center;font-size:30px}.thumb .photo,.thumb img{width:100%;height:76px;object-fit:cover}.thumb p{font-size:10px}.photo{border-radius:12px;overflow:hidden;background:#eeeade;min-width:0}.photo img{width:100%;height:180px;object-fit:contain;display:block}.photo button{font-size:12px;padding:8px;min-height:44px}.photo p{padding:12px;font-size:12px}.photos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0}.hint,footer,.tip{font-size:12px;color:#55716f}.tip{border-top:1px solid #cbd7cf;margin-top:30px;padding-top:20px}.tip b{font-size:14px}.empty{padding:30px 18px;text-align:center;border:1px dashed #bdcbc3;border-radius:18px}.file{background:#e4ede4;border-radius:12px;padding:14px}.file input{font-size:13px;padding:8px}.save{position:sticky;bottom:8px;width:100%;margin-top:18px;box-shadow:0 5px 20px #172b3522}.price{font-size:28px;color:#087b67;font-weight:700}.description{white-space:pre-wrap;overflow-wrap:anywhere}dl>div{justify-content:space-between;border-bottom:1px solid #dce3dc;padding:12px 0;gap:12px}dt{font-size:13px;color:#55716f}dd{margin:0;overflow-wrap:anywhere;text-align:right}.danger{color:#a33030;border-color:#debcbc;margin:24px 0}.sales{padding-left:20px;line-height:1.8;font-size:13px}a{color:#087b67;display:inline-block;min-height:44px;padding:12px 0;overflow-wrap:anywhere}#status{font-size:13px;line-height:1.5;padding:10px 0;color:#087b67}#status.error{color:#a33030}footer{padding:28px 0 10px;line-height:1.7}article{padding-top:20px}#sale{display:flex;gap:10px;flex-wrap:wrap;align-items:end}#sale label{flex:1;min-width:100px}#sale button{margin-bottom:8px}@media(min-width:700px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{padding:40px}.hero h2{max-width:420px;font-size:44px}.photos{grid-template-columns:repeat(3,minmax(0,1fr))}form:not(#sale){max-width:650px}header{padding-top:12px}}@media(prefers-reduced-motion:no-preference){button{transition:background .15s}button:hover{filter:brightness(.97)}}\n\n.shell.mini{padding:6px 10px}.mini header small{display:none}.mini h1{font-size:18px;margin:0}.mini header{padding:0}.mini #minimize{min-height:44px}\n.prep-field{padding:16px 0;border-bottom:1px solid #cbd7cf}.check{display:flex;align-items:center;gap:12px;font-size:14px;line-height:1.5}.check input{width:24px;height:24px;flex-shrink:0;margin:0}.vinted-link{padding:14px 18px;border-radius:12px;text-decoration:none}#prep-summary{background:#e4ede4;padding:14px;border-radius:12px}#photo-zip{display:block}#resume-prep{margin-bottom:12px}\n\n.shell.mini>[data-orion-languages]{display:none!important}\n[hidden]{display:none!important}\n\n#product-condition{display:block;width:100%;margin:8px 0 18px;padding:14px;border:1px solid #bdcbc3;border-radius:12px;background:white;color:#172b35;font:16px -apple-system,sans-serif}\n";
+function renderVintedChoices(container,product,rows){
+  container.replaceChildren();const doc=container.ownerDocument,table=doc.createElement('table'),head=doc.createElement('tr');
+  for(const title of rows?['Champ','Fiche enregistrée','Lu dans Vinted','Contrôle']:['Champ','Fiche enregistrée']){const th=doc.createElement('th');th.scope='col';th.textContent=title;head.append(th);}table.append(head);
+  for(const key of ['category','condition','shipping']){
+    const row=rows?.find(item=>item.key===key),tr=doc.createElement('tr');
+    const label=doc.createElement('th');label.scope='row';label.textContent=({category:'Catégorie',condition:'État',shipping:'Colis'})[key];tr.append(label);
+    for(const text of rows?[row.expected||'—',row.actual||'—']:[String(product[key]||'—')]){const td=doc.createElement('td');td.dataset.orionUser='';td.textContent=text;tr.append(td);}
+    if(row){const td=doc.createElement('td');td.textContent=row.matches?'Valeur vérifiée.':row.reason;td.style.color=row.matches?'#087b67':'#a23d17';if(!row.matches&&row.detail){const detail=doc.createElement('p');detail.textContent=row.detail;td.append(detail);}tr.append(td);}table.append(tr);
+  }container.append(table);
+}
 async function launchVintedTest(product) {
   if(!hasBridge()){await startPreparation(product);status('Transfert extension indisponible : préparation manuelle ouverte.');return;}
   const t=await stageTransfer(product),link=vintedLaunchURL(t.nonce);
-  main.innerHTML=`<button id="test-back">← Retour à la fiche</button><h2>Transfert prêt</h2><p>Produit et photos enregistrés dans le stockage de Violentmonkey ; transfert valable 24 heures. Aucun serveur de transfert.</p><button id="open-vinted" class="primary">Ouvrir Vinted et préremplir (test) ↗</button><p id="vinted-launch-status" role="status">Le bouton charge le formulaire dans cet onglet Orion.</p><p>Si Orion propose l’app Vinted, choisissez Jamais. Si l’app s’ouvre encore, utilisez Copier le lien pour Orion et collez le lien complet dans la barre d’adresse. Le lien spécial Orion a été retiré car il échouait sur iPhone.</p><details><summary>Vinted s’ouvre dans l’app ?</summary><p>Dans Orion : Réglages → Général → App Opener. Si une règle vinted.es ou www.vinted.es est présente, choisissez Never / Jamais. Si nécessaire, remettez la règle sur Ask / Demander, puis relancez le bouton et choisissez Never. Le balayage de droite à gauche retire uniquement cette règle, sans effacer les fiches.</p></details><button id="copy-vinted-link">Copier le lien pour Orion</button><textarea id="vinted-link-fallback" readonly hidden aria-label="Lien à coller dans Orion" rows="3"></textarea><p id="vinted-link-status" role="status"></p><p>Expérimental : contrôlez tous les champs et les images. Le script ne publie ni ne sauvegarde de brouillon. Les valeurs supplémentaires inconnues restent manuelles.</p><button id="manual-prep">Utiliser la préparation manuelle</button>`;
+  main.innerHTML=`<button id="test-back">← Retour à la fiche</button><h2>Transfert prêt</h2><h3>Choix enregistrés dans la fiche</h3><div id="source-choices"></div><p>Produit et photos enregistrés dans le stockage de Violentmonkey ; transfert valable 24 heures. Aucun serveur de transfert.</p><button id="open-vinted" class="primary">Ouvrir Vinted et préremplir (test) ↗</button><p id="vinted-launch-status" role="status">Le bouton charge le formulaire dans cet onglet Orion.</p><p>Si Orion propose l’app Vinted, choisissez Jamais. Si l’app s’ouvre encore, utilisez Copier le lien pour Orion et collez le lien complet dans la barre d’adresse. Le lien spécial Orion a été retiré car il échouait sur iPhone.</p><details><summary>Vinted s’ouvre dans l’app ?</summary><p>Dans Orion : Réglages → Général → App Opener. Si une règle vinted.es ou www.vinted.es est présente, choisissez Never / Jamais. Si nécessaire, remettez la règle sur Ask / Demander, puis relancez le bouton et choisissez Never. Le balayage de droite à gauche retire uniquement cette règle, sans effacer les fiches.</p></details><button id="copy-vinted-link">Copier le lien pour Orion</button><textarea id="vinted-link-fallback" readonly hidden aria-label="Lien à coller dans Orion" rows="3"></textarea><p id="vinted-link-status" role="status"></p><p>Expérimental : contrôlez tous les champs et les images. Le script ne publie ni ne sauvegarde de brouillon. Les valeurs supplémentaires inconnues restent manuelles.</p><button id="manual-prep">Utiliser la préparation manuelle</button>`;
+  renderVintedChoices(main.querySelector('#source-choices'),product);
   const button=main.querySelector('#open-vinted'),message=main.querySelector('#vinted-launch-status');
   let requested=false,since=0,timer;
   const showAck=async()=>{
@@ -799,23 +978,26 @@ async function launchVintedTest(product) {
 }
 async function initVintedAssistant(){
   const host=document.createElement('div');host.id='orion-vinted-test';host.style.cssText='position:fixed;right:calc(env(safe-area-inset-right, 0px) + 8px);bottom:calc(env(safe-area-inset-bottom, 0px) + 8px);z-index:2147483646;max-width:calc(100vw - 16px);width:auto';
-  const root=host.attachShadow({mode:'open'});root.innerHTML=`<style>:host{font:15px -apple-system,sans-serif;color:#172b35}*{box-sizing:border-box}section{width:min(360px,calc(100vw - 16px));padding:14px;background:#f6f5ef;border:2px solid #087b67;border-radius:14px;max-height:55vh;overflow:auto}button,a{font:inherit;display:inline-block;padding:12px;min-height:44px;margin:4px;border-radius:9px;border:1px solid #087b67;background:white;color:#087b67}p,li{line-height:1.4}ul{padding-left:18px}textarea{width:100%;font-size:16px}#toggle{position:sticky;top:0;z-index:1}section.folded [data-orion-languages]{display:none!important}section.folded{width:auto;padding:0;border:0;background:transparent}section.folded #toggle{margin:0;padding:8px 12px;min-height:44px;border-radius:22px;background:#087b67;color:white}</style><section class="folded"><button id="toggle" aria-label="Ouvrir Orion" aria-expanded="false">Orion</button><div id="body" hidden><b>Orion Express · préremplissage expérimental</b><p id="status" role="status">Chargement du transfert local…</p><button id="fill" disabled>Préremplir une seule fois</button><button id="retry" disabled>Réessayer les textes et choix (sans photos)</button><ul id="result"></ul><p>Aucune publication ni sauvegarde de brouillon automatique. La présence dans un champ ne confirme pas sa validation par Vinted. Vérifiez les photos et les champs dépendants après chaque changement de catégorie.</p><a href="https://example.com/" target="_blank" rel="noopener">Retour au catalogue</a><button id="clear">Effacer le transfert local</button></div></section>`;document.body.append(host);
+  const root=host.attachShadow({mode:'open'});root.innerHTML=`<style>:host{font:15px -apple-system,sans-serif;color:#172b35}*{box-sizing:border-box}section{width:min(360px,calc(100vw - 16px));padding:14px;background:#f6f5ef;border:2px solid #087b67;border-radius:14px;max-height:55vh;overflow:auto}button,a{font:inherit;display:inline-block;padding:12px;min-height:44px;margin:4px;border-radius:9px;border:1px solid #087b67;background:white;color:#087b67}p,li{line-height:1.4}table{width:100%;border-collapse:collapse;font-size:12px}td,th{padding:5px;text-align:left;vertical-align:top;overflow-wrap:anywhere;border-bottom:1px solid #ddd}ul{padding-left:18px}textarea{width:100%;font-size:16px}#toggle{position:sticky;top:0;z-index:1}section.folded [data-orion-languages]{display:none!important}section.folded{width:auto;padding:0;border:0;background:transparent}section.folded #toggle{margin:0;padding:8px 12px;min-height:44px;border-radius:22px;background:#087b67;color:white}</style><section class="folded"><button id="toggle" aria-label="Ouvrir Orion" aria-expanded="false">Orion</button><div id="body" hidden><b>Orion Express · préremplissage expérimental</b><p id="status" role="status">Chargement du transfert local…</p><button id="fill" disabled>Préremplir une seule fois</button><button id="retry" disabled>Réessayer les textes et choix (sans photos)</button><h3>Choix de la fiche et contrôle actuel</h3><div id="live-choices" aria-live="polite"></div><ul id="result"></ul><p>Aucune publication ni sauvegarde de brouillon automatique. La présence dans un champ ne confirme pas sa validation par Vinted. Vérifiez les photos et les champs dépendants après chaque changement de catégorie.</p><a href="https://example.com/" target="_blank" rel="noopener">Retour au catalogue</a><button id="clear">Effacer le transfert local</button></div></section>`;document.body.append(host);
   attachOrionLanguage(root,root.querySelector('section'));
-  const $=s=>root.querySelector(s);let busy=false,used=false,needsAttention=false,product,transfer;
+  const $=s=>root.querySelector(s);let busy=false,used=false,needsAttention=false,product,transfer,updateAudit,stopAudit;let reportedAttention=false,fatalError=false,choiceResults={};
   const expected=new URLSearchParams(location.hash.slice(1)).get('orion');
   $('#toggle').onclick=()=>{const body=$('#body');body.hidden=!body.hidden;$('#toggle').textContent=body.hidden?(needsAttention?'Orion !':'Orion'):'Réduire';$('#toggle').setAttribute('aria-label',body.hidden?'Ouvrir Orion':'Réduire Orion');$('#toggle').setAttribute('aria-expanded',String(!body.hidden));root.querySelector('section').classList.toggle('folded',body.hidden);};
-  const run=async(fn)=>{if(busy)return;busy=true;$('#fill').disabled=true;$('#retry').disabled=true;try{await fn();}catch(e){if(expected||transfer?.nonce)await acknowledgeVintedLaunch(expected||transfer.nonce,'error').catch(()=>{});needsAttention=true;$('#status').textContent=errorMessage(e);if($('#body').hidden)$('#toggle').textContent='Orion !';}finally{busy=false;$('#fill').disabled=used||!product;$('#retry').disabled=!used||!product;}};
+  const run=async(fn)=>{if(busy)return;busy=true;fatalError=false;$('#fill').disabled=true;$('#retry').disabled=true;try{await fn();}catch(e){if(expected||transfer?.nonce)await acknowledgeVintedLaunch(expected||transfer.nonce,'error').catch(()=>{});fatalError=true;needsAttention=true;$('#status').textContent=errorMessage(e);if($('#body').hidden)$('#toggle').textContent='Orion !';}finally{busy=false;$('#fill').disabled=used||!product;$('#retry').disabled=!used||!product;if(updateAudit&&product)updateAudit(auditVintedChoices(document,product));}};
   const perform=async(photos)=>{
+    choiceResults={};
+    $('#status').textContent='Préparation en cours : photos puis caractéristiques…';
     if(location.pathname!=='/items/new')throw new Error('Ouvrez le formulaire de création Vinted.');
     if(!navigator.onLine)throw new Error('Connexion indisponible. Aucun transfert lancé.');
-    uniqueField(document,'title');uniqueField(document,'description','TEXTAREA');
+    if(photos){uniqueField(document,'title');uniqueField(document,'description','TEXTAREA');}
+    else if(!document.getElementById('title')||!document.getElementById('description'))throw new Error('Ouvrez le formulaire de création Vinted.');
     if(photos){const lock=await GM_getValue(TRANSFER_KEY+'-used','');if(lock===transfer.nonce || await GM_getValue(TRANSFER_KEY+'-used-'+transfer.nonce,false)){used=true;throw new Error('Ce transfert a déjà été tenté. Reprenez les textes sans photos ou préparez de nouveau la fiche.');}await GM_setValue(TRANSFER_KEY+'-used-'+transfer.nonce,true);await GM_setValue(TRANSFER_KEY+'-used',transfer.nonce);used=true;}
-    const draw=results=>{needsAttention=Object.entries(results).some(([key,value])=>key!=='dynamic' && value.startsWith('Manuel'));if($('#body').hidden)$('#toggle').textContent=needsAttention?'Orion !':'Orion';$('#result').replaceChildren();for(const [k,v]of Object.entries(results)){const li=document.createElement('li');li.textContent=`${Object.fromEntries(PREP_FIELDS)[k] || ({photos:'Photos',dynamic:'Champs supplémentaires'})[k] || k} : ${v}`;$('#result').append(li);}};
-    const results=await applyVintedProduct(document,product,draw,{photos});await acknowledgeVintedLaunch(transfer.nonce,Object.entries(results).some(([key,value])=>key!=='dynamic'&&value.startsWith('Manuel'))?'partial':'complete');$('#status').textContent='Tentative terminée. Vérifiez chaque champ et chaque miniature native Vinted. Rien n’a été publié.';
+    const draw=results=>{choiceResults=results;reportedAttention=Object.entries(results).some(([key,value])=>!['dynamic','category','condition','shipping'].includes(key) && value.startsWith('Manuel'));$('#result').replaceChildren();for(const [k,v]of Object.entries(results)){if(['category','condition','shipping'].includes(k))continue;const li=document.createElement('li');li.textContent=`${Object.fromEntries(PREP_FIELDS)[k] || ({photos:'Photos',dynamic:'Champs supplémentaires'})[k] || k} : ${v}`;$('#result').append(li);}updateAudit?.(auditVintedChoices(document,product));};
+    const results=await applyVintedProduct(document,product,draw,{photos});const choices=auditVintedChoices(document,product);await acknowledgeVintedLaunch(transfer.nonce,choices.some(row=>!row.matches)||Object.entries(results).some(([key,value])=>key!=='dynamic'&&value.startsWith('Manuel'))?'partial':'complete');$('#status').textContent='Tentative terminée. Vérifiez chaque champ et chaque miniature native Vinted. Rien n’a été publié.';
   };
   const fill=async photos=>{if(!navigator.locks?.request)throw new Error('Verrou de sécurité indisponible dans ce navigateur. Utilisez la préparation manuelle.');return navigator.locks.request('orion-express-fill',()=>perform(photos));};
   $('#fill').onclick=()=>run(()=>fill(true));$('#retry').onclick=()=>run(()=>fill(false));
-  $('#clear').onclick=()=>run(async()=>{await GM_deleteValue(TRANSFER_KEY);product=null;$('#status').textContent='Transfert local effacé. Catalogue conservé.';});
+  $('#clear').onclick=()=>run(async()=>{await GM_deleteValue(TRANSFER_KEY);stopAudit?.();stopAudit=null;updateAudit=null;product=null;$('#live-choices').replaceChildren();needsAttention=false;reportedAttention=false;if($('#body').hidden)$('#toggle').textContent='Orion';$('#status').textContent='Transfert local effacé. Catalogue conservé.';});
   await run(async()=>{
     if(!hasBridge())throw new Error('Stockage Violentmonkey inaccessible. Vérifiez les autorisations du script.');
     let loaded,lastError;
@@ -825,6 +1007,8 @@ async function initVintedAssistant(){
       catch(e){lastError=e;loaded=null;if(!expected||i===5)throw lastError;await new Promise(r=>setTimeout(r,200));}
     }
     ({transfer,product}=loaded);
+    updateAudit=rows=>{renderVintedChoices($('#live-choices'),product,rows.map(row=>({...row,detail:!row.matches&&choiceResults[row.key]?.startsWith('Manuel')?choiceResults[row.key]:''})));needsAttention=fatalError||reportedAttention||(!busy&&used&&rows.some(row=>!row.matches));if($('#body').hidden)$('#toggle').textContent=needsAttention?'Orion !':'Orion';};
+    stopAudit?.();stopAudit=watchVintedChoices(document,product,updateAudit);
     $('#status').textContent=`Prêt : ${product.title}, ${product.photos.length} photo(s). Lancez le test lorsque le formulaire est chargé.`;
     if(expected){await waitFor(()=>visible(document.getElementById('title'))&&visible(document.getElementById('description')),20000);await acknowledgeVintedLaunch(expected,'ready');await fill(true);}
   });
@@ -832,6 +1016,7 @@ async function initVintedAssistant(){
 
 if(location.hostname === 'www.vinted.es'){void initVintedAssistant();return;}
 if (document.getElementById('orion-express-v2')) return;
+Object.assign(ES,{'Choisir un format précis':'Elegir un tamaño preciso','Petit':'Pequeño','Moyen':'Mediano','Grand':'Grande'});
 document.title='Orion Express';
 for(const name of ['application-name','apple-mobile-web-app-title']){
   const meta=document.head.querySelector(`meta[name="${name}"]`) || document.createElement('meta');
@@ -841,7 +1026,7 @@ const host = document.createElement('div');
 host.id = 'orion-express-v2';
 host.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#f6f5ef;color:#172b35';
 const root = host.attachShadow({ mode: 'open' });
-root.innerHTML = `<style>${APP_CSS}</style><div class="shell"><header><div><small>VOTRE ATELIER DE VENTE · V3</small><h1>Orion <em>Express</em></h1></div><button id="minimize" aria-label="Réduire l’application">−</button></header><div class="origin">Local · example.com · aucune synchronisation</div><div id="status" role="status" aria-live="polite"></div><main></main><footer>Les données du navigateur ne sont pas une sauvegarde. Exportez vers Fichiers régulièrement.<br>Préparation manuelle des annonces : aucune connexion ni publication sur Vinted.</footer></div>`;
+root.innerHTML = `<style>${APP_CSS}#product-shipping{display:block;width:100%;margin:8px 0 18px;padding:14px;border:1px solid #bdcbc3;border-radius:12px;background:white;color:#172b35;font:16px -apple-system,sans-serif}</style><div class="shell"><header><div><small>VOTRE ATELIER DE VENTE · V3</small><h1>Orion <em>Express</em></h1></div><button id="minimize" aria-label="Réduire l’application">−</button></header><div class="origin">Local · example.com · aucune synchronisation</div><div id="status" role="status" aria-live="polite"></div><main></main><footer>Les données du navigateur ne sont pas une sauvegarde. Exportez vers Fichiers régulièrement.<br>Préparation manuelle des annonces : aucune connexion ni publication sur Vinted.</footer></div>`;
 document.body.append(host);
 attachOrionLanguage(root,root.querySelector('.shell'));
 const $ = s => root.querySelector(s);
@@ -927,8 +1112,10 @@ async function home() {
 async function edit(draft) {
   const p = draft ?? { title:'', price:0, initialStock:1, photos:[], sales:[] };
   const photos = structuredClone(p.photos); selected = p.id;
+  const shippingChoices=shippingEditorChoices(p.shipping);
+  if(p.shipping)ES[`Format actuel à préciser : ${p.shipping}`]=`Tamaño actual por precisar: ${p.shipping}`;
   const fields = [['title','Titre','text'],['price','Prix (€)','number'],['category','Catégorie','text'],['brand','Marque','text'],['condition','État','text'],['shipping','Format du colis','text'],['initialStock','Stock initial','number']];
-  main.innerHTML = `<button id="back">← Catalogue</button><h2>${p.id ? 'Modifier la fiche' : 'Nouveau produit'}</h2><form>${fields.map(([key,label,type]) => key==='condition' ? `<label for="product-condition">${label}</label><select id="product-condition" name="condition">${conditionEditorChoices(p.condition).map(o=>`<option value="${esc(o.value)}" ${o.selected?'selected':''}>${esc(o.label)}</option>`).join('')}</select>` : `<label>${label}<input name="${key}" type="${type}" value="${esc(p[key] ?? '')}" ${type === 'number' ? `min="0" step="${key === 'price' ? '0.01' : '1'}" required inputmode="${key === 'price' ? 'decimal' : 'numeric'}"` : ''} ${key === 'title' ? 'required maxlength="200"' : ''}></label>`).join('')}<label for="description">Description</label><textarea id="description" name="description" rows="6">${esc(p.description)}</textarea><h3>Photos · <span id="photo-count">${photos.length}</span></h3><div class="photos"></div><button id="add-photos" type="button">＋ Ajouter des photos</button><input id="photos" type="file" accept="image/*" multiple hidden><p class="hint">Jusqu’à 15 Mo par photo. HEIC peut être conservé sans être affichable sur tous les navigateurs. Remplacer agit seulement sur la photo choisie.</p><button class="primary save" type="submit">Enregistrer la fiche</button></form>`;
+  main.innerHTML = `<button id="back">← Catalogue</button><h2>${p.id ? 'Modifier la fiche' : 'Nouveau produit'}</h2><form>${fields.map(([key,label,type]) => (key==='condition'||key==='shipping') ? `<label for="product-${key}">${label}</label><select id="product-${key}" name="${key}">${(key==='condition'?conditionEditorChoices(p.condition):shippingChoices).map(o=>`<option value="${esc(o.value)}" ${o.selected?'selected':''}>${esc(o.label)}</option>`).join('')}</select>` : `<label>${label}<input name="${key}" type="${type}" value="${esc(p[key] ?? '')}" ${type === 'number' ? `min="0" step="${key === 'price' ? '0.01' : '1'}" required inputmode="${key === 'price' ? 'decimal' : 'numeric'}"` : ''} ${key === 'title' ? 'required maxlength="200"' : ''}></label>`).join('')}<label for="description">Description</label><textarea id="description" name="description" rows="6">${esc(p.description)}</textarea><h3>Photos · <span id="photo-count">${photos.length}</span></h3><div class="photos"></div><button id="add-photos" type="button">＋ Ajouter des photos</button><input id="photos" type="file" accept="image/*" multiple hidden><p class="hint">Jusqu’à 15 Mo par photo. HEIC peut être conservé sans être affichable sur tous les navigateurs. Remplacer agit seulement sur la photo choisie.</p><button class="primary save" type="submit">Enregistrer la fiche</button></form>`;
   const changed = () => { dirty = true; $('#photo-count').textContent = photos.length; };
   await renderPhotos($('.photos'), photos, true, changed);
   $('form').oninput = () => { dirty = true; };
@@ -937,7 +1124,7 @@ async function edit(draft) {
   bind('#back', async () => { if (leave()) await home(); });
   $('form').onsubmit = e => { e.preventDefault(); void safe(async () => {
     const data = new FormData($('form')); const patch = {photos};
-    for (const [key,,type] of fields) patch[key] = type === 'number' ? Number(String(data.get(key)).replace(',','.')) : String(data.get(key)).trim();
+    for (const [key,,type] of fields) patch[key] = type === 'number' ? Number(String(data.get(key)).replace(',','.')) : key==='shipping' ? String(data.get(key)) : String(data.get(key)).trim();
     patch.description = String(data.get('description'));
     if (!patch.title) throw new Error('Ajoutez un titre.');
     const saved = selected === undefined ? await repo.create(patch) : await repo.update(selected,patch,{updatedAt:p.updatedAt});
@@ -956,7 +1143,7 @@ async function preview(id) {
   for (let i=0; i<p.photos.length; i++) {
     try { const a = document.createElement('a'); a.href = await photoURL(p.photos[i]); a.download = `photo-${i+1}`; a.textContent = `Photo ${i+1} ↗`; $('#photo-downloads').append(a); } catch { /* original retained */ }
   }
-  bind('#prepare-vinted', async () => launchVintedTest(p));
+  bind('#prepare-vinted', async () => {const latest=await repo.get(id);if(!latest)throw new Error('Fiche introuvable.');await launchVintedTest(latest);});
   bind('#back', home); bind('#edit',async () => edit(p)); bind('#duplicate', async () => { const d = await repo.duplicate(id); await preview(d.id); status('Copie créée, historique des ventes réinitialisé.'); });
   bind('#copy',async () => copy(listingForOrion(p))); bind('#copy-title',async () => copy(p.title)); bind('#copy-description',async () => copy(p.description));
   bind('#delete', async () => { if (orionConfirm('Supprimer définitivement cette fiche et ses photos ? Exportez une sauvegarde avant de continuer.')) { await repo.remove(id); await home(); status('Fiche supprimée.'); } });

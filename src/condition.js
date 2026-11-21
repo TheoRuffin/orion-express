@@ -37,11 +37,11 @@ const conditionSelected=cell=>{
 };
 export async function selectVintedCondition(doc,value){
  const desired=resolveOrionCondition(value); // Reject "Neuf" before opening the menu.
- const trigger=await waitFor(()=>{const list=[...doc.querySelectorAll('[id="condition"]')].filter(visible);return list.length===1?list[0]:null;},4500);
+ const trigger=await waitFor(()=>pickerTrigger(doc,'condition'),4500);
  const currentMatches=()=>{try{return resolveOrionCondition(selectedText(doc.getElementById('condition'))).key===desired.key;}catch{return false;}};
  const menuAlreadyVisible=()=>{const scope=popupFor(doc,trigger);return scope && visible(scope) && [...scope.querySelectorAll('[role=radio],[role=option]')].some(cell=>visible(cell)&&conditionOfCell(cell));};
  if(currentMatches() && trigger.getAttribute('aria-expanded')!=='true' && !menuAlreadyVisible())return `État vérifié : ${selectedText(trigger)}`;
- if(trigger.getAttribute('aria-expanded')!=='true')trigger.click();
+ if(trigger.getAttribute('aria-expanded')!=='true' && !menuAlreadyVisible())trigger.click();
  let chosen;
  const findCell=()=>{
    const scope=popupFor(doc,trigger) || doc;
@@ -52,7 +52,7 @@ export async function selectVintedCondition(doc,value){
  const menuRoot=popupFor(doc,trigger,chosen);
  // Click the actual semantic cell, not a nested radio whose DOM checked state can bypass the component.
  chosen.click();
- const closed=()=>currentMatches() && doc.getElementById('condition')?.getAttribute('aria-expanded')!=='true' && (!findCell()) && (!menuRoot || !menuRoot.isConnected || !visible(menuRoot));
+ const closed=()=>visible(doc.getElementById('condition')) && currentMatches() && doc.getElementById('condition')?.getAttribute('aria-expanded')!=='true' && (!findCell()) && (!menuRoot || !menuRoot.isConnected || !visible(menuRoot));
  // Some mobile variants bind only the native radio's change handler. Retry that same precise option once.
  try{await waitFor(()=>conditionSelected(findCell()) || closed(),500);}catch{const cell=findCell();const input=cell?.matches('input[type=radio]')?cell:cell?.querySelector('input[type=radio]');if(input && !input.disabled)input.click();}
  await waitFor(()=>conditionSelected(findCell()) || closed(),3500);

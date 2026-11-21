@@ -12,7 +12,7 @@ async function setup(context,page,{mode="normal"}={}){
  // Model an OS interception only in this fault fixture. Normal tests use the unchanged script and real navigation.
  const loadedScript=mode==='blocked'?script.replace('window.location.assign(url);','window.navigationAttempts=(window.navigationAttempts||0)+1;'):script;
  await page.addScriptTag({content:loadedScript});
- await page.getByRole('button',{name:'Créer « Jeu de cartes » à 10 €'}).click();await page.getByLabel('Description',{exact:true}).fill('Texte exact');await page.getByLabel('Catégorie',{exact:true}).fill('Loisirs > Jeux de société');await page.getByLabel('Marque',{exact:true}).fill('Sans marque');await page.getByLabel('État',{exact:true}).selectOption('Très bon état');await page.getByLabel('Format du colis',{exact:true}).fill('Petit');
+ await page.getByRole('button',{name:'Créer « Jeu de cartes » à 10 €'}).click();await page.getByLabel('Description',{exact:true}).fill('Texte exact');await page.getByLabel('Catégorie',{exact:true}).fill('Loisirs > Jeux de société');await page.getByLabel('Marque',{exact:true}).fill('Sans marque');await page.getByLabel('État',{exact:true}).selectOption('Très bon état');await page.getByLabel('Format du colis',{exact:true}).selectOption('Petit');
  await page.locator('#photos').setInputFiles([{name:'one.png',mimeType:'image/png',buffer:Buffer.from('first')},{name:'two.png',mimeType:'image/png',buffer:Buffer.from('second')}]);await page.getByRole('button',{name:'Enregistrer la fiche'}).click();
  await page.getByRole('button',{name:'Préparer sur Vinted',exact:true}).click();
  const button=page.getByRole('button',{name:'Ouvrir Vinted et préremplir (test) ↗'});
@@ -23,7 +23,7 @@ async function setup(context,page,{mode="normal"}={}){
   await button.click();return {source:page,openings,url,values};
  }
  await button.click();await page.waitForURL(url);if(mode==='nohash')await page.goto(url.split('#')[0]);const form=page;await form.waitForLoadState();await form.addScriptTag({content:script});await form.getByRole('button',{name:'Ouvrir Orion',exact:true}).click();
- expect(context.pages().length).toBe(pageCount);if(mode==='normal')expect(openings).toHaveLength(1);return {form,values,openings,nonce:new URL(url).hash.slice('#orion='.length)};
+ expect(context.pages().length).toBe(pageCount);if(mode==='normal'){expect(openings).toHaveLength(1);await expect(form.locator('#orion-vinted-test').getByRole('status')).toContainText('Tentative terminée',{timeout:25000});}return {form,values,openings,nonce:new URL(url).hash.slice('#orion='.length)};
 }
 test('transfert entre origines, textes exacts, FileList ordre/octets, champs dynamiques et aucune publication',async({context,page})=>{
  const {form,values,nonce}=await setup(context,page);await expect(form.locator('#orion-vinted-test').getByRole('status')).toContainText('Tentative terminée');
@@ -64,4 +64,27 @@ test('interception simulée par le système : aucun faux succès ni deuxième ou
 test('connexion ayant perdu le fragment : reprise explicite avec les mêmes photos, sans automatique',async({context,page})=>{
  const {form,values,nonce}=await setup(context,page,{mode:'nohash'});await expect(form.locator('#orion-vinted-test').getByRole('status')).toContainText('Prêt :');await expect(form.locator('#title')).toBeEmpty();expect(await form.evaluate(()=>changes)).toBe(0);
  await form.getByRole('button',{name:'Préremplir une seule fois',exact:true}).click();await expect(form.locator('#orion-vinted-test').getByRole('status')).toContainText('Tentative terminée');await expect(form.locator('#title')).toHaveValue('Jeu de cartes');expect(await form.locator('input[type=file]').evaluate(async e=>Promise.all([...e.files].map(f=>f.text())))).toEqual(['first','second']);expect(await form.evaluate(()=>!!window.submitted)).toBe(false);expect(JSON.parse(values.get('orion-express-launch-ack-3.2.4-'+nonce)).state).toBe('complete');
+});
+
+test('photos en chargement : attendre avant catégorie et conserver les choix après reset natif',async({context,page})=>{
+ await context.addInitScript(()=>window.addEventListener('DOMContentLoaded',()=>{
+  if(location.hostname!=='www.vinted.es')return;
+  document.querySelector('input[type=file]').addEventListener('change',()=>{const progress=document.createElement('div');progress.setAttribute('role','progressbar');progress.id='upload-progress';progress.textContent='Téléversement contrôlé';document.body.append(progress);window.uploadSettled=false;setTimeout(()=>{document.getElementById('condition').textContent='Neuf avec étiquette';parcel(2);window.uploadSettled=true;progress.remove();},1800);});
+  document.getElementById('category').addEventListener('click',()=>{if(window.uploadSettled===false)window.tooEarlyCategory=true;});
+ }));
+ const {form}=await setup(context,page);await expect(form.locator('#orion-vinted-test').getByRole('status')).toContainText('Tentative terminée',{timeout:15000});expect(await form.evaluate(()=>[!!window.tooEarlyCategory,window.uploadSettled,state.condition,state.shipping,changes,!!window.submitted])).toEqual([false,true,'Très bon état',1,1,false]);
+});
+test('panneau : valeur réellement modifiée après succès retire le contrôle vert sans reclic ni photos',async({context,page})=>{
+ const {form}=await setup(context,page);await expect(form.locator('#orion-vinted-test').getByRole('status')).toContainText('Tentative terminée');const panel=form.locator('#orion-vinted-test');await expect(panel.locator('#live-choices')).toContainText('Valeur vérifiée.');
+ await form.evaluate(()=>{document.getElementById('condition').textContent='Neuf sans étiquette';parcel(2);});
+ await expect(panel.locator('#live-choices')).toContainText('Valeur différente de la fiche.');await expect(form.locator('#condition')).toHaveText('Neuf sans étiquette');await expect(form.locator('#package_type_selector_2')).toBeChecked();expect(await form.evaluate(()=>changes)).toBe(1);
+ const conditionRow=panel.locator('#live-choices tr').filter({has:form.getByRole('rowheader',{name:'État',exact:true})});await expect(conditionRow).toContainText('Très bon état');await expect(conditionRow).toContainText('Neuf sans étiquette');expect(await form.evaluate(()=>!!window.submitted)).toBe(false);
+});
+
+test('reprendre après catégorie bloquée dans un modal aria-hidden : confirmer puis état/colis sans double photo',async({context,page})=>{
+ await context.addInitScript(()=>{window.fakeNativeChoiceOnly=true;window.addEventListener('DOMContentLoaded',()=>{if(location.hostname!=='www.vinted.es')return;document.getElementById('category').addEventListener('click',()=>document.querySelector('form').setAttribute('aria-hidden','true'));document.getElementById('done').addEventListener('click',()=>document.querySelector('form').removeAttribute('aria-hidden'));});});
+ const {form}=await setup(context,page);const panel=form.locator('#orion-vinted-test');await expect(form.locator('#popup')).toBeVisible();await expect(panel.locator('#live-choices')).toContainText('Menu encore ouvert.');await expect(panel.locator('#live-choices')).toContainText('category : Composant Vinted non reconnu ou trop lent.');
+ await form.evaluate(()=>window.fakeNativeChoiceOnly=false);await panel.getByRole('button',{name:'Réessayer les textes et choix (sans photos)'}).click();await expect(form.locator('#popup')).toBeHidden({timeout:15000});await expect(form.locator('#condition')).toHaveText('Très bon état');await expect(form.locator('#package_type_selector_1')).toBeChecked();expect(await form.evaluate(()=>[changes,confirmations,!!window.submitted])).toEqual([1,['category','brand','condition'],false]);
+ await expect(panel.getByRole('status')).toContainText('Tentative terminée');await expect(panel.locator('#live-choices')).not.toContainText('Menu encore ouvert.');await expect(panel.locator('#live-choices')).not.toContainText('Manuel :');
+ await panel.getByRole('button',{name:'Effacer le transfert local'}).click();await expect(panel.locator('#live-choices')).toBeEmpty();await form.evaluate(()=>{document.getElementById('condition').textContent='Neuf sans étiquette';parcel(2);});await form.waitForTimeout(1100);await expect(panel.locator('#live-choices')).toBeEmpty();
 });

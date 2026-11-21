@@ -1,8 +1,20 @@
-# Orion Express V3.2.5
+# Orion Express V3.2.6
 
-Gestion locale de fiches produits dans **Orion sur iPhone**, distribuée sous forme de userscript Violentmonkey. Version **3.2.5**, espagnol par défaut avec sélecteur français, sans serveur applicatif, sans compte supplémentaire et sans dépendance distante au lancement.
+Gestion locale de fiches produits dans **Orion sur iPhone**, distribuée sous forme de userscript Violentmonkey. Version **3.2.6**, espagnol par défaut avec sélecteur français, sans serveur applicatif, sans compte supplémentaire et sans dépendance distante au lancement.
 
 [Installer le userscript](https://raw.githubusercontent.com/TheoRuffin/orion-express/main/orion-express.user.js) · [Code source](https://github.com/TheoRuffin/orion-express) · [Versions](https://github.com/TheoRuffin/orion-express/releases)
+
+## 3.2.6 — Opciones guardadas y valores reales de Vinted
+
+[Instalar 3.2.6](https://raw.githubusercontent.com/TheoRuffin/orion-express/v3.2.6/orion-express.user.js), recargar el catálogo y preparar una transferencia nueva. La navegación en la misma pestaña de 3.2.5 se conserva.
+
+- Se relee la ficha guardada al pulsar Preparar, para evitar transferir una copia antigua de la vista previa. Se muestran categoría, estado y paquete antes de abrir Vinted.
+- Los menús ocultos se ignoran; la confirmación Fait/Listo se busca dentro del diálogo móvil completo. Se admite retomar un diálogo ya abierto que oculta el formulario.
+- Las fotos se transmiten primero y se esperan los indicadores de carga visibles antes de completar las características. Se vuelve a comprobar el estado antes del paquete, que respeta la ficha guardada.
+- El panel compacto Orion muestra **Ficha guardada / Valor en Vinted / Comprobación**. Si Vinted cambia después un valor, el control se actualiza; no conserva un éxito antiguo. Este seguimiento es de lectura y no vuelve a tocar el formulario automáticamente.
+- Tamaño del paquete preciso en Editar: Pequeño, Mediano o Grande; una antigua cadena desconocida no se convierte por defecto. «Neuf/Nuevo» ambiguo sigue requiriendo un estado preciso.
+
+Una categoría que no se confirma impide completar sus campos dependientes; el panel lo hace visible. No se elige otra categoría ni otro estado para aparentar éxito. Para una ruta de categoría completa, la prueba de selección se pierde si se vuelve a abrir manualmente el menú y debe confirmarse de nuevo. **La nueva versión debe probarse en Orion iPhone real.** [Detalles y validaciones](docs/V3.2.6.md).
 
 ## 3.2.5 — Navegación en la misma pestaña
 
@@ -48,7 +60,7 @@ La V3.2 corrige les champs signalés sur l’iPhone : sélection effective du ra
 
 Les photos, le titre et la description de V3.1 ont été confirmés fonctionnels par l’utilisateur sur son iPhone ; leur transfert et le stockage des fiches ne sont pas modifiés. **Les corrections V3.2 restent à confirmer sur cet iPhone.** Le format de prix a aussi été essayé sur le vrai formulaire Chrome, sans publier : `10.00` devient `10,00 €`.
 
-Mise à jour : exportez une sauvegarde, installez la [version 3.2.5](https://raw.githubusercontent.com/TheoRuffin/orion-express/v3.2.5/orion-express.user.js) dans Orion avec Violentmonkey puis rechargez le catalogue. Préparez un **nouveau transfert** depuis la fiche et ouvrez un **formulaire vide** pour tester. Aucune désinstallation, aucun effacement des données. Vérifiez que catégorie, marque, état et colis sont renseignés dans la fiche ; une valeur manquante ou ambiguë reste signalée comme manuelle. Pour un intitulé de catégorie ambigu, précisez son chemin exact avec `>` dans la fiche.
+Mise à jour : exportez une sauvegarde, installez la [version 3.2.6](https://raw.githubusercontent.com/TheoRuffin/orion-express/v3.2.6/orion-express.user.js) dans Orion avec Violentmonkey puis rechargez le catalogue. Préparez un **nouveau transfert** depuis la fiche et ouvrez un **formulaire vide** pour tester. Aucune désinstallation, aucun effacement des données. Vérifiez que catégorie, marque, état et colis sont renseignés dans la fiche ; une valeur manquante ou ambiguë reste signalée comme manuelle. Pour un intitulé de catégorie ambigu, précisez son chemin exact avec `>` dans la fiche.
 
 ## V3.1 : préremplissage expérimental sur vinted.es
 
@@ -56,7 +68,7 @@ Mise à jour : exportez une sauvegarde, installez la [version 3.2.5](https://raw
 
 ### Sur l’iPhone
 
-1. Exportez votre catalogue vers Fichiers, puis recherchez les mises à jour dans Violentmonkey. Acceptez les nouvelles permissions du même script : stockage GM et exécution uniquement sur `https://www.vinted.es/items/new*`. Version attendue **3.2.5**. Rechargez example.com sans effacer ses données.
+1. Exportez votre catalogue vers Fichiers, puis recherchez les mises à jour dans Violentmonkey. Acceptez les nouvelles permissions du même script : stockage GM et exécution uniquement sur `https://www.vinted.es/items/new*`. Version attendue **3.2.6**. Rechargez example.com sans effacer ses données.
 2. Sélectionnez une fiche complète puis **Préparer sur Vinted**. Appuyez sur **Ouvrir Vinted et préremplir (test)**. Le formulaire doit être vide ; connectez-vous si nécessaire. Si le catalogue paraît vide après la mise à jour, ne supprimez ni ne réimportez rien : vérifiez l’origine/profil et revenez à la version 3.0.0 pour diagnostiquer. Après connexion, si le fragment du lien a disparu, le panneau permet de lancer **Préremplir une seule fois** manuellement.
 3. Le module tente automatiquement les champs reconnus et les photos lorsque le lien contient le bon identifiant de transfert. Contrôlez les valeurs et surtout **les miniatures natives Vinted**, leur nombre et leur ordre. Une FileList remplie ne prouve pas l’acceptation des images par Vinted. Aucune action n’est effectuée sur Publier/Ajouter ou Sauvegarder le brouillon.
 

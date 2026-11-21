@@ -34,7 +34,16 @@ export function transferFiles(input,files) {
   if(input.files.length!==files.length)throw new Error('Le navigateur refuse le transfert des photos.');
   input.dispatchEvent(new Event('change',{bubbles:true}));input.dispatchEvent(new Event('input',{bubbles:true}));
 }
-const visible=e=>!!e && !!(e.getClientRects().length) && !e.disabled;
+const visible=e=>{
+  if(!e || typeof e.getClientRects!=='function' || !e.isConnected || !e.getClientRects().length || e.matches(':disabled'))return false;
+  const view=e.ownerDocument?.defaultView;
+  for(let node=e;node?.nodeType===1;node=node.parentElement){
+    if(node.hidden || node.hasAttribute('inert') || node.getAttribute('aria-hidden')==='true')return false;
+    const style=view?.getComputedStyle(node);
+    if(style && (style.display==='none' || ['hidden','collapse'].includes(style.visibility) || style.contentVisibility==='hidden'))return false;
+  }
+  return true;
+};
 export function uniqueField(doc,id,tag='INPUT') {
   const list=[...doc.querySelectorAll(`[id="${id}"]`)].filter(e=>e.tagName===tag && visible(e));
   if(list.length!==1)throw new Error(`Champ ${id} introuvable ou ambigu. Formulaire modifié ou non chargé.`);
@@ -76,6 +85,14 @@ async function waitForStable(find,stableMs=700,ms=4500){
 }
 const selectedText=e=>e?.querySelector('[data-testid$="--value"]')?.textContent ?? (e?.matches('input,select')?e.value:e?.textContent) ?? '';
 function parts(value){return String(value).split(/\s*(?:>|›)\s*/).map(v=>v.trim()).filter(Boolean);}
+// A visible leaf label alone cannot prove the requested category hierarchy.
+const vintedCategoryEvidence=new WeakMap();
+function clearVintedCategoryEvidence(doc){vintedCategoryEvidence.delete(doc);}
+function categoryEvidencePath(value){return parts(value).map(fold).join(' > ');}
+function hasVintedCategoryEvidence(doc,value,actual){
+  const evidence=vintedCategoryEvidence.get(doc);
+  return !!evidence && evidence.path===categoryEvidencePath(value) && evidence.leaf===fold(actual);
+}
 function optionInfo(el,target) {
   const leaves=[...el.querySelectorAll('div,span,label')].filter(n=>fold(n.textContent)===fold(target));
   const matches=fold(el.textContent)===fold(target) || leaves.length>0 || fold(el.getAttribute('aria-label'))===fold(target);
@@ -86,13 +103,36 @@ function optionInfo(el,target) {
   return {el,title:String(title).trim(),path:parts(body)};
 }
 function popupFor(doc,trigger,option) {
-  const owned=doc.getElementById(trigger.getAttribute('aria-controls') || '');
-  return owned || option?.closest('[role=dialog],[role=menu],[role=listbox],[data-radix-popper-content-wrapper]') || [...doc.querySelectorAll('[role=dialog],[role=menu],[role=listbox],[data-radix-popper-content-wrapper]')].filter(visible).at(-1);
+  const selector='[role=dialog],[role=menu],[role=listbox],[data-radix-popper-content-wrapper]';
+  // The mobile dialog owns its footer; an inner listbox need not contain its Fait button.
+  const scopeFor=node=>{
+    const dialog=node.closest('[role=dialog]');
+    if(visible(dialog))return dialog;
+    const scope=node.matches(selector)?node:node.closest(selector);
+    return visible(scope)?scope:null;
+  };
+  if(visible(option)){const scope=scopeFor(option);if(scope)return scope;}
+  const owned=String(trigger?.getAttribute('aria-controls') || '').split(/\s+/).filter(Boolean).map(id=>doc.getElementById(id)).filter(visible);
+  for(const node of owned){const scope=scopeFor(node);if(scope)return scope;return node;}
+  const popups=[...doc.querySelectorAll(selector)].filter(visible);
+  if(trigger?.id){
+    const related=popups.filter(node=>String(node.getAttribute('aria-labelledby') || '').split(/\s+/).includes(trigger.id));
+    if(related.length)return scopeFor(related.at(-1));
+  }
+  return popups.filter(node=>node.getAttribute('role')==='dialog').at(-1) || popups.at(-1);
+}
+function pickerTrigger(doc,id){
+  const candidates=[...doc.querySelectorAll(`[id="${id}"]`)].filter(e=>e.isConnected&&!e.matches(':disabled'));
+  const active=candidates.filter(visible);if(active.length===1)return active[0];
+  // ReactModal makes the background inert/aria-hidden while its existing picker is open.
+  if(candidates.length===1 && visible(popupFor(doc,candidates[0])))return candidates[0];
+  return null;
 }
 export async function selectVintedChoice(doc,id,value) {
   if(id==='condition')return selectVintedCondition(doc,value);
+  if(id==='category')clearVintedCategoryEvidence(doc);
   const path=parts(value);if(!path.length)throw new Error('Valeur manquante dans la fiche.');const target=path.at(-1);
-  const trigger=await waitFor(()=>{const list=[...doc.querySelectorAll(`[id="${id}"]`)].filter(visible);return list.length===1?list[0]:null;},4500);
+  const trigger=await waitFor(()=>pickerTrigger(doc,id),4500);
   const searchId=id==='category'?'catalog-search-input':`${id}-search-input`;
   const menuVisible=()=>visible(doc.getElementById(searchId)) || visible(popupFor(doc,trigger));
   if(fold(selectedText(trigger))===fold(target) && path.length===1 && trigger.getAttribute('aria-expanded')!=='true' && !menuVisible())return `Sélection vérifiée : ${target}`;
@@ -113,7 +153,7 @@ export async function selectVintedChoice(doc,id,value) {
     };
     chosen=await waitFor(findChoice,4500);
     const menuRoot=popupFor(doc,trigger,chosen.el);
-    const closed=()=>doc.getElementById(id)?.getAttribute('aria-expanded')!=='true' && fold(selectedText(doc.getElementById(id)))===fold(target) && !findChoice() && (!menuRoot || !menuRoot.isConnected || !visible(menuRoot)) && (!search || !visible(doc.getElementById(search.id)));
+    const closed=()=>visible(doc.getElementById(id)) && doc.getElementById(id)?.getAttribute('aria-expanded')!=='true' && fold(selectedText(doc.getElementById(id)))===fold(target) && !findChoice() && (!menuRoot || !menuRoot.isConnected || !visible(menuRoot)) && (!search || !visible(doc.getElementById(search.id)));
     // Selection belongs to the live component. A nested native checked flag alone is not enough.
     if(!isVintedSelected(chosen.el))chosen.el.click();
     try{await waitFor(()=>isVintedSelected(findChoice()?.el)||closed(),500);}catch{
@@ -132,6 +172,7 @@ export async function selectVintedChoice(doc,id,value) {
     },4500);
     if(confirm.button){if(!isVintedSelected(findChoice()?.el))throw new Error('Option non sélectionnée : confirmation annulée.');confirm.button.click();}
     await waitForStable(closed,300);
+    if(id==='category' && path.length>1)vintedCategoryEvidence.set(doc,{path:categoryEvidencePath(value),leaf:fold(target)});
     return `Sélection vérifiée : ${chosen.title}${id==='category' && chosen.path.length?' ('+chosen.path.join(' > ')+')':''}`;
   }catch(e){throw new Error(`${id} : ${errorMessage(e)}`);}
 }
@@ -166,7 +207,18 @@ export async function selectVintedShipping(doc,value) {
 export async function applyVintedProduct(doc,product,report,{photos=true}={}) {
   const hadContent=['title','description'].some(id=>String(doc.getElementById(id)?.value || '').trim());
   const results={};const attempt=async(key,fn)=>{try{const message=await fn();results[key]=message || 'À vérifier dans Vinted';}catch(e){results[key]='Manuel : '+errorMessage(e);}report({...results});};
-  // Text first: no submit, no buttons selected by generic text such as "Ajouter".
+  // Photos first: later category-dependent fields must follow native upload/loading updates.
+  if(photos)await attempt('photos',async()=>{
+    if(hadContent)throw new Error('Le formulaire contenait déjà du texte : ajout automatique de photos désactivé pour éviter les doublons.');
+    const inputs=[...doc.querySelectorAll('input[type=file]')].filter(e=>!e.disabled && e.multiple);
+    if(inputs.length!==1)throw new Error('Sélecteur photo absent ou ambigu.');
+    const files=await preparedFiles({photos:product.photos});transferFiles(inputs[0],files);
+    await waitForStable(()=>![...doc.querySelectorAll('[role=progressbar],[aria-busy="true"]')].some(visible),900,15000);
+    return 'Fichiers transmis au sélecteur ; téléversement à vérifier';
+  });
+  // Resume an already-open category modal before accessing its hidden background fields.
+  if(!photos)await attempt('category',()=>selectVintedChoice(doc,'category',product.category));
+  // No submit, no buttons selected by generic text such as "Ajouter".
   for(const key of ['title','description'])await attempt(key,async()=>{
     const el=uniqueField(doc,key,key==='description'?'TEXTAREA':'INPUT');
     const value=product[key];
@@ -174,22 +226,16 @@ export async function applyVintedProduct(doc,product,report,{photos=true}={}) {
     setNativeValue(el,value);if(el.value!==String(value))throw new Error('Valeur non conservée par le formulaire.');
   });
   await attempt('price',()=>setVintedPrice(doc,product.price));
-  await attempt('category',()=>selectVintedChoice(doc,'category',product.category));
+  if(photos)await attempt('category',()=>selectVintedChoice(doc,'category',product.category));
   for(const key of ['brand','condition'])await attempt(key,()=>{if(results.category?.startsWith('Manuel'))throw new Error('Choisissez et confirmez la catégorie avant ce champ.');return selectVintedChoice(doc,key,product[key]);});
-  if(photos)await attempt('photos',async()=>{
-    if(hadContent)throw new Error('Le formulaire contenait déjà du texte : ajout automatique de photos désactivé pour éviter les doublons.');
-    const inputs=[...doc.querySelectorAll('input[type=file]')].filter(e=>!e.disabled && e.multiple);
-    if(inputs.length!==1)throw new Error('Sélecteur photo absent ou ambigu.');
-    const files=await preparedFiles({photos:product.photos});transferFiles(inputs[0],files);
-    results.photos='Fichiers transmis au sélecteur ; téléversement à vérifier';
-  });
-  // Photos/category loading can rebuild parcel controls. Select the requested parcel last.
+  // Recheck the precise condition after dependent loading, before the parcel. No new photos on retry.
   const verifyCategory=async()=>{
     const target=parts(product.category).at(-1);
     await waitForStable(()=>{const trigger=doc.getElementById('category');return trigger && fold(selectedText(trigger))===fold(target) && trigger.getAttribute('aria-expanded')!=='true' && !visible(doc.getElementById('catalog-search-input'));},400);
     return results.category;
   };
   if(!results.category?.startsWith('Manuel'))await attempt('category',verifyCategory);
+  if(!results.category?.startsWith('Manuel') && !results.condition?.startsWith('Manuel'))await attempt('condition',()=>selectVintedCondition(doc,product.condition));
   await attempt('shipping',()=>{if(results.category?.startsWith('Manuel'))throw new Error('Choisissez et confirmez la catégorie avant ce champ.');return selectVintedShipping(doc,product.shipping);});
   if(!results.category?.startsWith('Manuel'))await attempt('category',verifyCategory);
   // Additional category attributes have no mapping in V1/V2: never guess them.

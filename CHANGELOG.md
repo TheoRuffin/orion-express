@@ -1,5 +1,14 @@
 # Historique
 
+## 3.2.6 — 21 novembre 2026
+
+- Sélection mobile : visibilité effective, conteneurs cachés ignorés, dialogue complet avec pied Fait, reprise d’un modal qui masque le champ principal.
+- Les photos précèdent les caractéristiques ; attente bornée des indicateurs de chargement, état revérifié avant colis, reprise des choix sans réinjecter les photos.
+- Relecture du produit enregistré au clic Préparer, résumé des trois choix à la source et comparatif fiche/valeur Vinted en direct. Les resets tardifs révoquent les succès affichés sans clic automatique.
+- Le chemin de catégorie complet exige une preuve de sélection dans le dialogue ; un simple libellé final identique ne prouve pas la hiérarchie.
+- Colis dans la fiche : liste précise FR/ES, anciennes valeurs littérales préservées tant qu’aucun choix explicite n’est fait, aucun défaut Moyen ajouté.
+- Tests des sources périmées, popovers cachés, modal/reprise, chargement retardé, contrôle en direct et conservation des données. Ouverture navigateur de 3.2.5 conservée, aucune publication automatique.
+
 ## 3.2.5 — 21 novembre 2026
 
 - Retour réel iPhone : GM_openInTab ouvrait toujours l’app Vinted et le schéma Orion retournait Invalid URL. Ces voies sont retirées, y compris le grant GM_openInTab et le schéma du raccourci dashboard.

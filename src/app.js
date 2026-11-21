@@ -1,4 +1,5 @@
 if (document.getElementById('orion-express-v2')) return;
+Object.assign(ES,{'Choisir un format précis':'Elegir un tamaño preciso','Petit':'Pequeño','Moyen':'Mediano','Grand':'Grande'});
 document.title='Orion Express';
 for(const name of ['application-name','apple-mobile-web-app-title']){
   const meta=document.head.querySelector(`meta[name="${name}"]`) || document.createElement('meta');
@@ -8,7 +9,7 @@ const host = document.createElement('div');
 host.id = 'orion-express-v2';
 host.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#f6f5ef;color:#172b35';
 const root = host.attachShadow({ mode: 'open' });
-root.innerHTML = `<style>${APP_CSS}</style><div class="shell"><header><div><small>VOTRE ATELIER DE VENTE · V3</small><h1>Orion <em>Express</em></h1></div><button id="minimize" aria-label="Réduire l’application">−</button></header><div class="origin">Local · example.com · aucune synchronisation</div><div id="status" role="status" aria-live="polite"></div><main></main><footer>Les données du navigateur ne sont pas une sauvegarde. Exportez vers Fichiers régulièrement.<br>Préparation manuelle des annonces : aucune connexion ni publication sur Vinted.</footer></div>`;
+root.innerHTML = `<style>${APP_CSS}#product-shipping{display:block;width:100%;margin:8px 0 18px;padding:14px;border:1px solid #bdcbc3;border-radius:12px;background:white;color:#172b35;font:16px -apple-system,sans-serif}</style><div class="shell"><header><div><small>VOTRE ATELIER DE VENTE · V3</small><h1>Orion <em>Express</em></h1></div><button id="minimize" aria-label="Réduire l’application">−</button></header><div class="origin">Local · example.com · aucune synchronisation</div><div id="status" role="status" aria-live="polite"></div><main></main><footer>Les données du navigateur ne sont pas une sauvegarde. Exportez vers Fichiers régulièrement.<br>Préparation manuelle des annonces : aucune connexion ni publication sur Vinted.</footer></div>`;
 document.body.append(host);
 attachOrionLanguage(root,root.querySelector('.shell'));
 const $ = s => root.querySelector(s);
@@ -94,8 +95,10 @@ async function home() {
 async function edit(draft) {
   const p = draft ?? { title:'', price:0, initialStock:1, photos:[], sales:[] };
   const photos = structuredClone(p.photos); selected = p.id;
+  const shippingChoices=shippingEditorChoices(p.shipping);
+  if(p.shipping)ES[`Format actuel à préciser : ${p.shipping}`]=`Tamaño actual por precisar: ${p.shipping}`;
   const fields = [['title','Titre','text'],['price','Prix (€)','number'],['category','Catégorie','text'],['brand','Marque','text'],['condition','État','text'],['shipping','Format du colis','text'],['initialStock','Stock initial','number']];
-  main.innerHTML = `<button id="back">← Catalogue</button><h2>${p.id ? 'Modifier la fiche' : 'Nouveau produit'}</h2><form>${fields.map(([key,label,type]) => key==='condition' ? `<label for="product-condition">${label}</label><select id="product-condition" name="condition">${conditionEditorChoices(p.condition).map(o=>`<option value="${esc(o.value)}" ${o.selected?'selected':''}>${esc(o.label)}</option>`).join('')}</select>` : `<label>${label}<input name="${key}" type="${type}" value="${esc(p[key] ?? '')}" ${type === 'number' ? `min="0" step="${key === 'price' ? '0.01' : '1'}" required inputmode="${key === 'price' ? 'decimal' : 'numeric'}"` : ''} ${key === 'title' ? 'required maxlength="200"' : ''}></label>`).join('')}<label for="description">Description</label><textarea id="description" name="description" rows="6">${esc(p.description)}</textarea><h3>Photos · <span id="photo-count">${photos.length}</span></h3><div class="photos"></div><button id="add-photos" type="button">＋ Ajouter des photos</button><input id="photos" type="file" accept="image/*" multiple hidden><p class="hint">Jusqu’à 15 Mo par photo. HEIC peut être conservé sans être affichable sur tous les navigateurs. Remplacer agit seulement sur la photo choisie.</p><button class="primary save" type="submit">Enregistrer la fiche</button></form>`;
+  main.innerHTML = `<button id="back">← Catalogue</button><h2>${p.id ? 'Modifier la fiche' : 'Nouveau produit'}</h2><form>${fields.map(([key,label,type]) => (key==='condition'||key==='shipping') ? `<label for="product-${key}">${label}</label><select id="product-${key}" name="${key}">${(key==='condition'?conditionEditorChoices(p.condition):shippingChoices).map(o=>`<option value="${esc(o.value)}" ${o.selected?'selected':''}>${esc(o.label)}</option>`).join('')}</select>` : `<label>${label}<input name="${key}" type="${type}" value="${esc(p[key] ?? '')}" ${type === 'number' ? `min="0" step="${key === 'price' ? '0.01' : '1'}" required inputmode="${key === 'price' ? 'decimal' : 'numeric'}"` : ''} ${key === 'title' ? 'required maxlength="200"' : ''}></label>`).join('')}<label for="description">Description</label><textarea id="description" name="description" rows="6">${esc(p.description)}</textarea><h3>Photos · <span id="photo-count">${photos.length}</span></h3><div class="photos"></div><button id="add-photos" type="button">＋ Ajouter des photos</button><input id="photos" type="file" accept="image/*" multiple hidden><p class="hint">Jusqu’à 15 Mo par photo. HEIC peut être conservé sans être affichable sur tous les navigateurs. Remplacer agit seulement sur la photo choisie.</p><button class="primary save" type="submit">Enregistrer la fiche</button></form>`;
   const changed = () => { dirty = true; $('#photo-count').textContent = photos.length; };
   await renderPhotos($('.photos'), photos, true, changed);
   $('form').oninput = () => { dirty = true; };
@@ -104,7 +107,7 @@ async function edit(draft) {
   bind('#back', async () => { if (leave()) await home(); });
   $('form').onsubmit = e => { e.preventDefault(); void safe(async () => {
     const data = new FormData($('form')); const patch = {photos};
-    for (const [key,,type] of fields) patch[key] = type === 'number' ? Number(String(data.get(key)).replace(',','.')) : String(data.get(key)).trim();
+    for (const [key,,type] of fields) patch[key] = type === 'number' ? Number(String(data.get(key)).replace(',','.')) : key==='shipping' ? String(data.get(key)) : String(data.get(key)).trim();
     patch.description = String(data.get('description'));
     if (!patch.title) throw new Error('Ajoutez un titre.');
     const saved = selected === undefined ? await repo.create(patch) : await repo.update(selected,patch,{updatedAt:p.updatedAt});
@@ -123,7 +126,7 @@ async function preview(id) {
   for (let i=0; i<p.photos.length; i++) {
     try { const a = document.createElement('a'); a.href = await photoURL(p.photos[i]); a.download = `photo-${i+1}`; a.textContent = `Photo ${i+1} ↗`; $('#photo-downloads').append(a); } catch { /* original retained */ }
   }
-  bind('#prepare-vinted', async () => launchVintedTest(p));
+  bind('#prepare-vinted', async () => {const latest=await repo.get(id);if(!latest)throw new Error('Fiche introuvable.');await launchVintedTest(latest);});
   bind('#back', home); bind('#edit',async () => edit(p)); bind('#duplicate', async () => { const d = await repo.duplicate(id); await preview(d.id); status('Copie créée, historique des ventes réinitialisé.'); });
   bind('#copy',async () => copy(listingForOrion(p))); bind('#copy-title',async () => copy(p.title)); bind('#copy-description',async () => copy(p.description));
   bind('#delete', async () => { if (orionConfirm('Supprimer définitivement cette fiche et ses photos ? Exportez une sauvegarde avant de continuer.')) { await repo.remove(id); await home(); status('Fiche supprimée.'); } });

@@ -14,7 +14,6 @@ const header = `// ==UserScript==
 // @match https://www.vinted.es/items/new*
 // @grant GM_getValue
 // @grant GM_setValue
-// @grant GM_openInTab
 // @grant GM_deleteValue
 // @inject-into auto
 // @updateURL ${base}orion-express.meta.js

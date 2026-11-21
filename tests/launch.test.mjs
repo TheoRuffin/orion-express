@@ -5,15 +5,16 @@ import {readFile} from 'node:fs/promises';
 
 const source=(await readFile('src/launch.js','utf8')).replace(/^export /gm,'');
 const NOW=1795262400000;
-function fixture({available=true,readError=false}={}){
- const values=new Map(),opens=[],writes=[],handle={closed:false,close(){}};
+function fixture({readError=false,navigationError=false}={}){
+ const values=new Map(),opens=[],navs=[],writes=[],failure=new Error('navigation refusée');
  const context=vm.createContext({URL,Date:{now:()=>NOW},
+  window:{location:{assign:url=>{navs.push(url);if(navigationError)throw failure;}},open:(...args)=>{opens.push(['window.open',...args]);throw new Error('nouvel onglet interdit');}},
   GM_getValue:async(key,fallback)=>{if(readError)throw new Error('bridge inaccessible');return values.has(key)?values.get(key):fallback;},
   GM_setValue:async(key,value)=>{writes.push([key,value]);values.set(key,value);},
-  ...(available?{GM_openInTab:(url,options)=>{opens.push({url,options:{...options}});return handle;}}:{})
+  GM_openInTab:(...args)=>{opens.push(['GM_openInTab',...args]);throw new Error('API extension interdite');}
  });
- vm.runInContext(source+'\nthis.launchTest={LAUNCH_ACK_KEY,vintedLaunchURL,orionLaunchURL,openVintedBrowserTab,acknowledgeVintedLaunch,readVintedLaunchAck};',context);
- return {api:context.launchTest,values,opens,writes,handle};
+ vm.runInContext(source+'\nthis.launchTest={LAUNCH_ACK_KEY,vintedLaunchURL,navigateVintedInCurrentTab,acknowledgeVintedLaunch,readVintedLaunchAck};',context);
+ return {api:context.launchTest,values,opens,navs,writes,failure};
 }
 
 test('URL de transfert : nonce entièrement encodée et conservée dans le fragment',()=>{
@@ -23,22 +24,25 @@ test('URL de transfert : nonce entièrement encodée et conservée dans le fragm
  for(const invalid of ['',null,undefined,42,{},[], 'x'.repeat(161)])assert.throws(()=>api.vintedLaunchURL(invalid),/Identifiant/);
 });
 
-test('schéma Orion documenté : dashboard et Vinted gardent leur URL complète, hash compris',()=>{
- const {api}=fixture();for(const target of ['https://example.com/','https://example.com/#dashboard','https://www.vinted.es/items/new#orion=a%26b']){
-  const native=api.orionLaunchURL(target);assert.ok(native.startsWith('orion://open-url?url='));
-  assert.equal(new URL(native).searchParams.get('url'),target);assert.equal(new URL(native).hash,'');
+test('bouton : location.assign synchrone dans cet onglet, URL HTTPS exacte et aucun faux ACK',()=>{
+ const {api,navs,opens,writes}=fixture();const result=api.navigateVintedInCurrentTab('transfer-1');
+ assert.equal(result,undefined);assert.deepEqual(navs,['https://www.vinted.es/items/new#orion=transfer-1']);
+ assert.deepEqual(opens,[]);assert.deepEqual(writes,[]);
+});
+
+test('navigation : entrées invalides refusées et pseudo-URL de nonce traitée comme donnée encodée',()=>{
+ const {api,navs,opens}=fixture();for(const invalid of ['',null,undefined,42,{},[],'x'.repeat(161)])assert.throws(()=>api.navigateVintedInCurrentTab(invalid),/Identifiant/);
+ assert.deepEqual(navs,[]);
+ for(const nonce of ['javascript:alert(1)','https://evil.test/#x','orion://open-url?url=https://evil.test/']){
+  api.navigateVintedInCurrentTab(nonce);const url=new URL(navs.at(-1));assert.equal(url.origin,'https://www.vinted.es');assert.equal(url.pathname,'/items/new');assert.equal(new URLSearchParams(url.hash.slice(1)).get('orion'),nonce);
  }
+ assert.deepEqual(opens,[]);
 });
 
-test('schéma Orion : destinations tierces, chemins inattendus et identifiants sont refusés',()=>{
- const {api}=fixture();for(const target of ['http://example.com/','https://example.com.evil.test/','https://evil.test/','https://www.vinted.es/','https://www.vinted.es/items/new/','https://www.vinted.es/items/123','https://vinted.es/items/new','https://example.com/private','https://user:secret@example.com/','https://user@www.vinted.es/items/new','javascript:alert(1)','data:text/html,test','orion://open-url?url=https://example.com/','invalid'])assert.throws(()=>api.orionLaunchURL(target));
-});
-
-test('bouton : appel synchrone unique de GM_openInTab avec active et insert, handle sans faux ACK',()=>{
- const {api,opens,handle,writes}=fixture();const result=api.openVintedBrowserTab('transfer-1');assert.equal(result,handle);
- assert.deepEqual(opens,[{url:'https://www.vinted.es/items/new#orion=transfer-1',options:{active:true,insert:true}}]);assert.deepEqual(writes,[]);
- assert.throws(()=>api.openVintedBrowserTab(''),/Identifiant/);assert.equal(opens.length,1);
- const absent=fixture({available:false});assert.throws(()=>absent.api.openVintedBrowserTab('transfer-1'),/indisponible/);assert.deepEqual(absent.opens,[]);
+test('navigation refusée : erreur propagée sans seconde tentative, API GM, schéma ou confirmation',()=>{
+ const {api,navs,opens,writes,failure}=fixture({navigationError:true});
+ assert.throws(()=>api.navigateVintedInCurrentTab('transfer-1'),error=>error===failure);
+ assert.deepEqual(navs,['https://www.vinted.es/items/new#orion=transfer-1']);assert.deepEqual(opens,[]);assert.deepEqual(writes,[]);
 });
 
 test('ACK : tous les états reconnus portent nonce et horodatage, les états inconnus sont ignorés',async()=>{

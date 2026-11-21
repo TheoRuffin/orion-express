@@ -1,24 +1,24 @@
 async function launchVintedTest(product) {
   if(!hasBridge()){await startPreparation(product);status('Transfert extension indisponible : préparation manuelle ouverte.');return;}
-  const t=await stageTransfer(product),link=vintedLaunchURL(t.nonce),nativeLink=orionLaunchURL(link);
-  main.innerHTML=`<button id="test-back">← Retour à la fiche</button><h2>Transfert prêt</h2><p>Produit et photos enregistrés dans le stockage de Violentmonkey ; transfert valable 24 heures. Aucun serveur de transfert.</p><button id="open-vinted" class="primary">Ouvrir Vinted et préremplir (test) ↗</button><p id="vinted-launch-status" role="status">Le bouton demande un onglet au navigateur par Violentmonkey.</p><a id="open-with-orion" href="${nativeLink}">Ouvrir avec Orion</a><p>Si l’app Vinted s’ouvre ou si aucun formulaire ne répond, utilisez Ouvrir avec Orion. Si Orion propose l’app Vinted, choisissez Jamais. Le choix iOS ne peut pas être modifié par ce script.</p><button id="copy-vinted-link">Copier le lien pour Orion</button><textarea id="vinted-link-fallback" readonly hidden aria-label="Lien à coller dans Orion" rows="3"></textarea><p id="vinted-link-status" role="status"></p><p>Expérimental : contrôlez tous les champs et les images. Le script ne publie ni ne sauvegarde de brouillon. Les valeurs supplémentaires inconnues restent manuelles.</p><button id="manual-prep">Utiliser la préparation manuelle</button>`;
-  const button=main.querySelector('#open-vinted'),message=main.querySelector('#vinted-launch-status'),native=main.querySelector('#open-with-orion');
+  const t=await stageTransfer(product),link=vintedLaunchURL(t.nonce);
+  main.innerHTML=`<button id="test-back">← Retour à la fiche</button><h2>Transfert prêt</h2><p>Produit et photos enregistrés dans le stockage de Violentmonkey ; transfert valable 24 heures. Aucun serveur de transfert.</p><button id="open-vinted" class="primary">Ouvrir Vinted et préremplir (test) ↗</button><p id="vinted-launch-status" role="status">Le bouton charge le formulaire dans cet onglet Orion.</p><p>Si Orion propose l’app Vinted, choisissez Jamais. Si l’app s’ouvre encore, utilisez Copier le lien pour Orion et collez le lien complet dans la barre d’adresse. Le lien spécial Orion a été retiré car il échouait sur iPhone.</p><details><summary>Vinted s’ouvre dans l’app ?</summary><p>Dans Orion : Réglages → Général → App Opener. Si une règle vinted.es ou www.vinted.es est présente, choisissez Never / Jamais. Si nécessaire, remettez la règle sur Ask / Demander, puis relancez le bouton et choisissez Never. Le balayage de droite à gauche retire uniquement cette règle, sans effacer les fiches.</p></details><button id="copy-vinted-link">Copier le lien pour Orion</button><textarea id="vinted-link-fallback" readonly hidden aria-label="Lien à coller dans Orion" rows="3"></textarea><p id="vinted-link-status" role="status"></p><p>Expérimental : contrôlez tous les champs et les images. Le script ne publie ni ne sauvegarde de brouillon. Les valeurs supplémentaires inconnues restent manuelles.</p><button id="manual-prep">Utiliser la préparation manuelle</button>`;
+  const button=main.querySelector('#open-vinted'),message=main.querySelector('#vinted-launch-status');
   let requested=false,since=0,timer;
   const showAck=async()=>{
     if(!since||!message.isConnected)return;
     const ack=await readVintedLaunchAck(t.nonce,since);
-    if(ack){message.textContent=({ready:'Formulaire Orion reconnu. Préremplissage en cours.',complete:'Préremplissage terminé dans l’onglet Vinted. Vérifiez l’annonce.',partial:'Formulaire reçu : certains champs demandent une vérification dans l’onglet Vinted.',error:'Le formulaire a signalé une erreur. Consultez le bouton Orion dans l’onglet Vinted.'})[ack.state];native.hidden=ack.state!=='error';return ack;}
+    if(ack){message.textContent=({ready:'Formulaire Orion reconnu. Préremplissage en cours.',complete:'Préremplissage terminé dans l’onglet Vinted. Vérifiez l’annonce.',partial:'Formulaire reçu : certains champs demandent une vérification dans l’onglet Vinted.',error:'Le formulaire a signalé une erreur. Consultez le bouton Orion dans l’onglet Vinted.'})[ack.state];return ack;}
   };
   const watch=()=>{
     clearInterval(timer);let checks=0;
-    timer=setInterval(async()=>{if(!message.isConnected){clearInterval(timer);return;}const ack=await showAck();if(ack&&ack.state!=='ready'){clearInterval(timer);return;}if(++checks>=24){clearInterval(timer);if(!ack){native.hidden=false;message.textContent='Aucune confirmation du formulaire. Revenez dans Orion et utilisez Ouvrir avec Orion. Aucun second onglet automatique.';}else if(ack.state==='ready'){message.textContent='Formulaire Orion reconnu. Consultez l’onglet Vinted pour vérifier le résultat.';}}},500);
+    timer=setInterval(async()=>{if(!message.isConnected){clearInterval(timer);return;}const ack=await showAck();if(ack&&ack.state!=='ready'){clearInterval(timer);return;}if(++checks>=24){clearInterval(timer);if(!ack){message.textContent='Aucune confirmation du formulaire. Si l’app s’ouvre, collez le lien complet dans la barre d’adresse d’Orion. Aucun second onglet automatique.';}else if(ack.state==='ready'){message.textContent='Formulaire Orion reconnu. Consultez l’onglet Vinted pour vérifier le résultat.';}}},500);
   };
   button.onclick=()=>{
     if(requested)return;requested=true;button.disabled=true;since=Date.now();
-    try{openVintedBrowserTab(t.nonce);message.textContent='Ouverture demandée. En attente du formulaire dans Orion…';watch();}
-    catch(e){requested=false;button.disabled=false;message.textContent=errorMessage(e);native.hidden=false;}
+    try{message.textContent='Ouverture demandée. En attente du formulaire dans Orion…';watch();navigateVintedInCurrentTab(t.nonce);}
+    catch(e){requested=false;button.disabled=false;message.textContent=errorMessage(e);}
   };
-  native.onclick=()=>{since=Date.now();button.disabled=true;requested=true;message.textContent='Ouverture explicite dans Orion demandée. En attente du formulaire…';watch();};
+
   const resume=()=>{if(message.isConnected)void showAck();else{window.removeEventListener('pageshow',resume);document.removeEventListener('visibilitychange',resume);}};window.addEventListener('pageshow',resume);document.addEventListener('visibilitychange',resume);
   bind('#copy-vinted-link',async()=>{
     const note=main.querySelector('#vinted-link-status');

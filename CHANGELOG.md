@@ -1,5 +1,13 @@
 # Historique
 
+## 3.2.5 — 21 novembre 2026
+
+- Retour réel iPhone : GM_openInTab ouvrait toujours l’app Vinted et le schéma Orion retournait Invalid URL. Ces voies sont retirées, y compris le grant GM_openInTab et le schéma du raccourci dashboard.
+- Bouton Vinted : navigation JavaScript location.assign dans l’onglet courant, URL HTTPS et fragment inchangés. Tests de navigation réelle contrôlée sans nouvel onglet ni schéma personnalisé.
+- Guide précis App Opener dans la préparation : règle Vinted Never/Jamais, réinitialisation Ask/Demander si nécessaire, sans toucher les données du site.
+- Raccourci dashboard : URL HTTPS classique, Orion navigateur par défaut requis.
+- Transfert, photos, contrôles des champs, ACK et protections de reprise conservés. Le routage natif de cette nouvelle méthode dans Orion iPhone reste à confirmer.
+
 ## 3.2.4 — 21 novembre 2026
 
 - Bouton Vinted natif appelant GM_openInTab (nouveau grant), au lieu d’un clic HTTPS normal. Repli explicite par schéma Orion documenté, sans seconde ouverture automatique.

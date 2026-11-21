@@ -110,7 +110,7 @@ test('métadonnées stables et build reproductible octet pour octet',async () =>
   assert.match(meta,/@updateURL https:\/\/raw.githubusercontent.com\/TheoRuffin\/orion-express\/main\/orion-express.meta.js/);
   assert.doesNotMatch(after,/@require|\beval\(|\bfetch\(|XMLHttpRequest/);
   assert.match(meta,/@match https:\/\/www\.vinted\.es\/items\/new\*/);
-  assert.match(meta,/@grant GM_openInTab/);
+  assert.doesNotMatch(meta,/@grant GM_openInTab/);
   assert.match(after,/https:\/\/www\.vinted\.es\/items\/new/);
   execFileSync(process.execPath,['--check','orion-express.user.js']);
 });

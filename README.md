@@ -1,8 +1,16 @@
-# Orion Express V3.2.4
+# Orion Express V3.2.5
 
-Gestion locale de fiches produits dans **Orion sur iPhone**, distribuée sous forme de userscript Violentmonkey. Version **3.2.4**, espagnol par défaut avec sélecteur français, sans serveur applicatif, sans compte supplémentaire et sans dépendance distante au lancement.
+Gestion locale de fiches produits dans **Orion sur iPhone**, distribuée sous forme de userscript Violentmonkey. Version **3.2.5**, espagnol par défaut avec sélecteur français, sans serveur applicatif, sans compte supplémentaire et sans dépendance distante au lancement.
 
 [Installer le userscript](https://raw.githubusercontent.com/TheoRuffin/orion-express/main/orion-express.user.js) · [Code source](https://github.com/TheoRuffin/orion-express) · [Versions](https://github.com/TheoRuffin/orion-express/releases)
+
+## 3.2.5 — Navegación en la misma pestaña
+
+[Instalar 3.2.5](https://raw.githubusercontent.com/TheoRuffin/orion-express/v3.2.5/orion-express.user.js). Se retiran las dos vías que fallaron en un iPhone real: GM_openInTab y el enlace orion:// que daba Invalid URL. El botón ahora navega con JavaScript en **la pestaña actual**, conservando el identificador y las fotos del producto. No abre otra ventana ni usa un esquema especial.
+
+Si Orion sigue abriendo la app: **Ajustes → General → App Opener**, regla vinted.es / www.vinted.es → **Never / Nunca**. Si es necesario, volver a Ask/Preguntar, pulsar de nuevo el botón y elegir Never. No borrar los datos del sitio. El panel incluye esta ayuda. La navegación JavaScript tiene respaldo documental para Safari; el comportamiento específico de Orion sigue necesitando una prueba en ese iPhone.
+
+El atajo del dashboard usa ahora **https://example.com/**. Configura Orion como navegador predeterminado de iOS para abrirlo allí. Se elimina el esquema que fallaba también del acceso directo. [Pruebas y fuentes](docs/V3.2.5.md).
 
 ## 3.2.4 — Abrir en Orion y acceso directo al panel
 
@@ -40,7 +48,7 @@ La V3.2 corrige les champs signalés sur l’iPhone : sélection effective du ra
 
 Les photos, le titre et la description de V3.1 ont été confirmés fonctionnels par l’utilisateur sur son iPhone ; leur transfert et le stockage des fiches ne sont pas modifiés. **Les corrections V3.2 restent à confirmer sur cet iPhone.** Le format de prix a aussi été essayé sur le vrai formulaire Chrome, sans publier : `10.00` devient `10,00 €`.
 
-Mise à jour : exportez une sauvegarde, installez la [version 3.2.4](https://raw.githubusercontent.com/TheoRuffin/orion-express/v3.2.4/orion-express.user.js) dans Orion avec Violentmonkey puis rechargez le catalogue. Préparez un **nouveau transfert** depuis la fiche et ouvrez un **formulaire vide** pour tester. Aucune désinstallation, aucun effacement des données. Vérifiez que catégorie, marque, état et colis sont renseignés dans la fiche ; une valeur manquante ou ambiguë reste signalée comme manuelle. Pour un intitulé de catégorie ambigu, précisez son chemin exact avec `>` dans la fiche.
+Mise à jour : exportez une sauvegarde, installez la [version 3.2.5](https://raw.githubusercontent.com/TheoRuffin/orion-express/v3.2.5/orion-express.user.js) dans Orion avec Violentmonkey puis rechargez le catalogue. Préparez un **nouveau transfert** depuis la fiche et ouvrez un **formulaire vide** pour tester. Aucune désinstallation, aucun effacement des données. Vérifiez que catégorie, marque, état et colis sont renseignés dans la fiche ; une valeur manquante ou ambiguë reste signalée comme manuelle. Pour un intitulé de catégorie ambigu, précisez son chemin exact avec `>` dans la fiche.
 
 ## V3.1 : préremplissage expérimental sur vinted.es
 
@@ -48,7 +56,7 @@ Mise à jour : exportez une sauvegarde, installez la [version 3.2.4](https://raw
 
 ### Sur l’iPhone
 
-1. Exportez votre catalogue vers Fichiers, puis recherchez les mises à jour dans Violentmonkey. Acceptez les nouvelles permissions du même script : stockage GM et exécution uniquement sur `https://www.vinted.es/items/new*`. Version attendue **3.2.4**. Rechargez example.com sans effacer ses données.
+1. Exportez votre catalogue vers Fichiers, puis recherchez les mises à jour dans Violentmonkey. Acceptez les nouvelles permissions du même script : stockage GM et exécution uniquement sur `https://www.vinted.es/items/new*`. Version attendue **3.2.5**. Rechargez example.com sans effacer ses données.
 2. Sélectionnez une fiche complète puis **Préparer sur Vinted**. Appuyez sur **Ouvrir Vinted et préremplir (test)**. Le formulaire doit être vide ; connectez-vous si nécessaire. Si le catalogue paraît vide après la mise à jour, ne supprimez ni ne réimportez rien : vérifiez l’origine/profil et revenez à la version 3.0.0 pour diagnostiquer. Après connexion, si le fragment du lien a disparu, le panneau permet de lancer **Préremplir une seule fois** manuellement.
 3. Le module tente automatiquement les champs reconnus et les photos lorsque le lien contient le bon identifiant de transfert. Contrôlez les valeurs et surtout **les miniatures natives Vinted**, leur nombre et leur ordre. Une FileList remplie ne prouve pas l’acceptation des images par Vinted. Aucune action n’est effectuée sur Publier/Ajouter ou Sauvegarder le brouillon.
 

@@ -67,7 +67,7 @@ function auditShippingChoice(doc,product){
 export function auditVintedChoices(doc,product){
  return [auditTextChoice(doc,product,'category'),auditTextChoice(doc,product,'condition'),auditShippingChoice(doc,product)];
 }
-export function watchVintedChoices(doc,product,onChange){
+export function watchVintedChoices(doc,product,onChange,{audit=auditVintedChoices}={}){
  const view=doc.defaultView;
  let stopped=false,queued=false,last;
  const own=node=>{
@@ -76,7 +76,7 @@ export function watchVintedChoices(doc,product,onChange){
  };
  const check=()=>{
    if(stopped)return;
-   const rows=auditVintedChoices(doc,product),signature=JSON.stringify(rows);
+   const rows=audit(doc,product),signature=JSON.stringify(rows);
    if(signature!==last){last=signature;onChange(rows);}
  };
  const schedule=()=>{if(stopped||queued)return;queued=true;queueMicrotask(()=>{queued=false;check();});};

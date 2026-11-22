@@ -1,8 +1,19 @@
-# Orion Express V3.2.6
+# Orion Express V3.2.7
 
-Gestion locale de fiches produits dans **Orion sur iPhone**, distribuée sous forme de userscript Violentmonkey. Version **3.2.6**, espagnol par défaut avec sélecteur français, sans serveur applicatif, sans compte supplémentaire et sans dépendance distante au lancement.
+Gestion locale de fiches produits dans **Orion sur iPhone**, distribuée sous forme de userscript Violentmonkey. Version **3.2.7**, espagnol par défaut avec sélecteur français, sans serveur applicatif, sans compte supplémentaire et sans dépendance distante au lancement.
 
 [Installer le userscript](https://raw.githubusercontent.com/TheoRuffin/orion-express/main/orion-express.user.js) · [Code source](https://github.com/TheoRuffin/orion-express) · [Versions](https://github.com/TheoRuffin/orion-express/releases)
+
+## 3.2.7 — Comprobación y recuperación automáticas
+
+[Actualizar el mismo userscript a 3.2.7](https://raw.githubusercontent.com/TheoRuffin/orion-express/v3.2.7/orion-express.user.js). Recarga el catálogo y prepara una transferencia nueva. **El recorrido y los botones siguen siendo los mismos.**
+
+- Comprueba título, descripción, precio, categoría, marca, estado y paquete contra la ficha, incluidos los errores de validación de Vinted. Relee los elementos actuales cuando el formulario se reconstruye.
+- Corrige automáticamente los valores perdidos o cambiados por el formulario: hasta dos correcciones adicionales por campo, durante una sesión de 60 segundos. Recomprueba la estabilidad después de corregir; no recarga la página ni vuelve a enviar las fotos.
+- Si empiezas a modificar el formulario, las correcciones se detienen y el panel sigue mostrando las diferencias. Una interrupción de conexión o visibilidad permite retomar dentro del tiempo restante. Un cambio de transferencia o navegación detiene la sesión antigua.
+- Las fotos mantienen su orden y sus archivos originales. La lista de archivos se compara con la transferencia, pero **no demuestra que Vinted haya aceptado las miniaturas**: esa parte queda por comprobar, sin éxito completo inventado ni segundo envío automático.
+
+No hay garantía del 100 % frente a cambios o rechazos del sitio. Un valor ambiguo, un campo adicional no modelado o una validación que sigue fallando permanece señalado. **La ejecución de esta versión en Orion iPhone real sigue pendiente de validación.** [Límites y pruebas](docs/V3.2.7.md).
 
 ## 3.2.6 — Opciones guardadas y valores reales de Vinted
 
@@ -68,7 +79,7 @@ Mise à jour : exportez une sauvegarde, installez la [version 3.2.6](https://raw
 
 ### Sur l’iPhone
 
-1. Exportez votre catalogue vers Fichiers, puis recherchez les mises à jour dans Violentmonkey. Acceptez les nouvelles permissions du même script : stockage GM et exécution uniquement sur `https://www.vinted.es/items/new*`. Version attendue **3.2.6**. Rechargez example.com sans effacer ses données.
+1. Exportez votre catalogue vers Fichiers, puis recherchez les mises à jour dans Violentmonkey. Acceptez les nouvelles permissions du même script : stockage GM et exécution uniquement sur `https://www.vinted.es/items/new*`. Version attendue **3.2.7**. Rechargez example.com sans effacer ses données.
 2. Sélectionnez une fiche complète puis **Préparer sur Vinted**. Appuyez sur **Ouvrir Vinted et préremplir (test)**. Le formulaire doit être vide ; connectez-vous si nécessaire. Si le catalogue paraît vide après la mise à jour, ne supprimez ni ne réimportez rien : vérifiez l’origine/profil et revenez à la version 3.0.0 pour diagnostiquer. Après connexion, si le fragment du lien a disparu, le panneau permet de lancer **Préremplir une seule fois** manuellement.
 3. Le module tente automatiquement les champs reconnus et les photos lorsque le lien contient le bon identifiant de transfert. Contrôlez les valeurs et surtout **les miniatures natives Vinted**, leur nombre et leur ordre. Une FileList remplie ne prouve pas l’acceptation des images par Vinted. Aucune action n’est effectuée sur Publier/Ajouter ou Sauvegarder le brouillon.
 

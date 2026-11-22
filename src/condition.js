@@ -36,12 +36,14 @@ const conditionSelected=cell=>{
  return cell.matches('input[type=radio]')?cell.checked:!!cell.querySelector('input[type=radio]:checked');
 };
 export async function selectVintedCondition(doc,value){
+ assertVintedMutationAllowed(doc);
  const desired=resolveOrionCondition(value); // Reject "Neuf" before opening the menu.
  const trigger=await waitFor(()=>pickerTrigger(doc,'condition'),4500);
+ assertVintedMutationAllowed(doc);
  const currentMatches=()=>{try{return resolveOrionCondition(selectedText(doc.getElementById('condition'))).key===desired.key;}catch{return false;}};
  const menuAlreadyVisible=()=>{const scope=popupFor(doc,trigger);return scope && visible(scope) && [...scope.querySelectorAll('[role=radio],[role=option]')].some(cell=>visible(cell)&&conditionOfCell(cell));};
  if(currentMatches() && trigger.getAttribute('aria-expanded')!=='true' && !menuAlreadyVisible())return `État vérifié : ${selectedText(trigger)}`;
- if(trigger.getAttribute('aria-expanded')!=='true' && !menuAlreadyVisible())trigger.click();
+ if(trigger.getAttribute('aria-expanded')!=='true' && !menuAlreadyVisible())clickVintedElement(trigger);
  let chosen;
  const findCell=()=>{
    const scope=popupFor(doc,trigger) || doc;
@@ -51,10 +53,10 @@ export async function selectVintedCondition(doc,value){
  chosen=await waitFor(findCell,4500);
  const menuRoot=popupFor(doc,trigger,chosen);
  // Click the actual semantic cell, not a nested radio whose DOM checked state can bypass the component.
- chosen.click();
+ clickVintedElement(chosen);
  const closed=()=>visible(doc.getElementById('condition')) && currentMatches() && doc.getElementById('condition')?.getAttribute('aria-expanded')!=='true' && (!findCell()) && (!menuRoot || !menuRoot.isConnected || !visible(menuRoot));
  // Some mobile variants bind only the native radio's change handler. Retry that same precise option once.
- try{await waitFor(()=>conditionSelected(findCell()) || closed(),500);}catch{const cell=findCell();const input=cell?.matches('input[type=radio]')?cell:cell?.querySelector('input[type=radio]');if(input && !input.disabled)input.click();}
+ try{await waitFor(()=>conditionSelected(findCell()) || closed(),500);}catch{const cell=findCell();const input=cell?.matches('input[type=radio]')?cell:cell?.querySelector('input[type=radio]');if(input && !input.disabled)clickVintedElement(input);}
  await waitFor(()=>conditionSelected(findCell()) || closed(),3500);
  const action=await waitFor(()=>{
    if(closed())return {closed:true};
@@ -65,8 +67,9 @@ export async function selectVintedCondition(doc,value){
  },4500);
  if(action.button){
    if(!conditionSelected(findCell()))throw new Error('État non coché : confirmation annulée.');
-   action.button.click();
+   clickVintedElement(action.button);
  }
  await waitFor(closed,4500);
+ assertVintedMutationAllowed(doc);
  return `État vérifié : ${selectedText(doc.getElementById('condition'))}`;
 }

@@ -1,10 +1,10 @@
 function renderVintedChoices(container,product,rows){
   container.replaceChildren();const doc=container.ownerDocument,table=doc.createElement('table'),head=doc.createElement('tr');
   for(const title of rows?['Champ','Fiche enregistrée','Lu dans Vinted','Contrôle']:['Champ','Fiche enregistrée']){const th=doc.createElement('th');th.scope='col';th.textContent=title;head.append(th);}table.append(head);
-  for(const key of ['category','condition','shipping']){
+  for(const key of rows?rows.map(row=>row.key):['category','condition','shipping']){
     const row=rows?.find(item=>item.key===key),tr=doc.createElement('tr');
-    const label=doc.createElement('th');label.scope='row';label.textContent=({category:'Catégorie',condition:'État',shipping:'Colis'})[key];tr.append(label);
-    for(const text of rows?[row.expected||'—',row.actual||'—']:[String(product[key]||'—')]){const td=doc.createElement('td');td.dataset.orionUser='';td.textContent=text;tr.append(td);}
+    const label=doc.createElement('th');label.scope='row';label.textContent=({title:'Titre',description:'Description',price:'Prix',category:'Catégorie',brand:'Marque',condition:'État',shipping:'Colis',photos:'Photos',dynamic:'Champs supplémentaires'})[key];tr.append(label);
+    for(const text of rows?[row.expected||'—',row.actual||'—']:[String(product[key]||'—')]){const td=doc.createElement('td');if(!['photos','dynamic'].includes(key))td.dataset.orionUser='';td.textContent=text;tr.append(td);}
     if(row){const td=doc.createElement('td');td.textContent=row.matches?'Valeur vérifiée.':row.reason;td.style.color=row.matches?'#087b67':'#a23d17';if(!row.matches&&row.detail){const detail=doc.createElement('p');detail.textContent=row.detail;td.append(detail);}tr.append(td);}table.append(tr);
   }container.append(table);
 }
@@ -42,24 +42,48 @@ async function initVintedAssistant(){
   const host=document.createElement('div');host.id='orion-vinted-test';host.style.cssText='position:fixed;right:calc(env(safe-area-inset-right, 0px) + 8px);bottom:calc(env(safe-area-inset-bottom, 0px) + 8px);z-index:2147483646;max-width:calc(100vw - 16px);width:auto';
   const root=host.attachShadow({mode:'open'});root.innerHTML=`<style>:host{font:15px -apple-system,sans-serif;color:#172b35}*{box-sizing:border-box}section{width:min(360px,calc(100vw - 16px));padding:14px;background:#f6f5ef;border:2px solid #087b67;border-radius:14px;max-height:55vh;overflow:auto}button,a{font:inherit;display:inline-block;padding:12px;min-height:44px;margin:4px;border-radius:9px;border:1px solid #087b67;background:white;color:#087b67}p,li{line-height:1.4}table{width:100%;border-collapse:collapse;font-size:12px}td,th{padding:5px;text-align:left;vertical-align:top;overflow-wrap:anywhere;border-bottom:1px solid #ddd}ul{padding-left:18px}textarea{width:100%;font-size:16px}#toggle{position:sticky;top:0;z-index:1}section.folded [data-orion-languages]{display:none!important}section.folded{width:auto;padding:0;border:0;background:transparent}section.folded #toggle{margin:0;padding:8px 12px;min-height:44px;border-radius:22px;background:#087b67;color:white}</style><section class="folded"><button id="toggle" aria-label="Ouvrir Orion" aria-expanded="false">Orion</button><div id="body" hidden><b>Orion Express · préremplissage expérimental</b><p id="status" role="status">Chargement du transfert local…</p><button id="fill" disabled>Préremplir une seule fois</button><button id="retry" disabled>Réessayer les textes et choix (sans photos)</button><h3>Choix de la fiche et contrôle actuel</h3><div id="live-choices" aria-live="polite"></div><ul id="result"></ul><p>Aucune publication ni sauvegarde de brouillon automatique. La présence dans un champ ne confirme pas sa validation par Vinted. Vérifiez les photos et les champs dépendants après chaque changement de catégorie.</p><a href="https://example.com/" target="_blank" rel="noopener">Retour au catalogue</a><button id="clear">Effacer le transfert local</button></div></section>`;document.body.append(host);
   attachOrionLanguage(root,root.querySelector('section'));
-  const $=s=>root.querySelector(s);let busy=false,used=false,needsAttention=false,product,transfer,updateAudit,stopAudit;let reportedAttention=false,fatalError=false,choiceResults={};
+  const $=s=>root.querySelector(s);let busy=false,used=false,needsAttention=false,product,transfer,updateAudit,stopAudit,recovery,photoFiles,photoManifest;
+  let fatalError=false,choiceResults={},ackState,ackChain=Promise.resolve();
+  const audit=()=>auditVintedForm(document,product,{photoManifest});
+  const updateAck=rows=>{
+    if(!used || !transfer)return ackChain;
+    const state=fatalError?'error':rows.some(row=>!row.matches)?'partial':'complete';
+    if(state===ackState)return ackChain;ackState=state;
+    ackChain=ackChain.catch(()=>{}).then(()=>acknowledgeVintedLaunch(transfer.nonce,state)).catch(error=>{ackState=null;throw error;});return ackChain;
+  };
   const expected=new URLSearchParams(location.hash.slice(1)).get('orion');
   $('#toggle').onclick=()=>{const body=$('#body');body.hidden=!body.hidden;$('#toggle').textContent=body.hidden?(needsAttention?'Orion !':'Orion'):'Réduire';$('#toggle').setAttribute('aria-label',body.hidden?'Ouvrir Orion':'Réduire Orion');$('#toggle').setAttribute('aria-expanded',String(!body.hidden));root.querySelector('section').classList.toggle('folded',body.hidden);};
-  const run=async(fn)=>{if(busy)return;busy=true;fatalError=false;$('#fill').disabled=true;$('#retry').disabled=true;try{await fn();}catch(e){if(expected||transfer?.nonce)await acknowledgeVintedLaunch(expected||transfer.nonce,'error').catch(()=>{});fatalError=true;needsAttention=true;$('#status').textContent=errorMessage(e);if($('#body').hidden)$('#toggle').textContent='Orion !';}finally{busy=false;$('#fill').disabled=used||!product;$('#retry').disabled=!used||!product;if(updateAudit&&product)updateAudit(auditVintedChoices(document,product));}};
-  const perform=async(photos)=>{
-    choiceResults={};
-    $('#status').textContent='Préparation en cours : photos puis caractéristiques…';
+  const run=async(fn)=>{if(busy)return;busy=true;fatalError=false;$('#fill').disabled=true;$('#retry').disabled=true;try{await fn();}catch(e){if(expected||transfer?.nonce)await acknowledgeVintedLaunch(expected||transfer.nonce,'error').catch(()=>{});fatalError=true;needsAttention=true;$('#status').textContent=errorMessage(e);if($('#body').hidden)$('#toggle').textContent='Orion !';}finally{busy=false;$('#fill').disabled=used||!product;$('#retry').disabled=!used||!product;if(updateAudit&&product)updateAudit(audit());}};
+  const draw=results=>{
+    choiceResults=results;$('#result').replaceChildren();
+    for(const [key,value]of Object.entries(results)){if(VINTED_REPAIR_FIELDS.includes(key))continue;const li=document.createElement('li');li.textContent=`${({photos:'Photos',dynamic:'Champs supplémentaires'})[key] || key} : ${value}`;$('#result').append(li);}
+    updateAudit?.(audit());
+  };
+  const perform=async(photos,automatic=false)=>{
+    if(automatic&&!recovery?.active)return;
+    $('#status').textContent='Vérification et correction automatiques…';
     if(location.pathname!=='/items/new')throw new Error('Ouvrez le formulaire de création Vinted.');
     if(!navigator.onLine)throw new Error('Connexion indisponible. Aucun transfert lancé.');
-    if(photos){uniqueField(document,'title');uniqueField(document,'description','TEXTAREA');}
-    else if(!document.getElementById('title')||!document.getElementById('description'))throw new Error('Ouvrez le formulaire de création Vinted.');
-    if(photos){const lock=await GM_getValue(TRANSFER_KEY+'-used','');if(lock===transfer.nonce || await GM_getValue(TRANSFER_KEY+'-used-'+transfer.nonce,false)){used=true;throw new Error('Ce transfert a déjà été tenté. Reprenez les textes sans photos ou préparez de nouveau la fiche.');}await GM_setValue(TRANSFER_KEY+'-used-'+transfer.nonce,true);await GM_setValue(TRANSFER_KEY+'-used',transfer.nonce);used=true;}
-    const draw=results=>{choiceResults=results;reportedAttention=Object.entries(results).some(([key,value])=>!['dynamic','category','condition','shipping'].includes(key) && value.startsWith('Manuel'));$('#result').replaceChildren();for(const [k,v]of Object.entries(results)){if(['category','condition','shipping'].includes(k))continue;const li=document.createElement('li');li.textContent=`${Object.fromEntries(PREP_FIELDS)[k] || ({photos:'Photos',dynamic:'Champs supplémentaires'})[k] || k} : ${v}`;$('#result').append(li);}updateAudit?.(auditVintedChoices(document,product));};
-    const results=await applyVintedProduct(document,product,draw,{photos});const choices=auditVintedChoices(document,product);await acknowledgeVintedLaunch(transfer.nonce,choices.some(row=>!row.matches)||Object.entries(results).some(([key,value])=>key!=='dynamic'&&value.startsWith('Manuel'))?'partial':'complete');$('#status').textContent='Tentative terminée. Vérifiez chaque champ et chaque miniature native Vinted. Rien n’a été publié.';
+    if(!automatic){
+      if(photos){uniqueField(document,'title');uniqueField(document,'description','TEXTAREA');}
+      else if(!document.getElementById('title')||!document.getElementById('description'))throw new Error('Ouvrez le formulaire de création Vinted.');
+      if(photos){const lock=await GM_getValue(TRANSFER_KEY+'-used','');if(lock===transfer.nonce || await GM_getValue(TRANSFER_KEY+'-used-'+transfer.nonce,false)){used=true;throw new Error('Ce transfert a déjà été tenté. Reprenez les textes sans photos ou préparez de nouveau la fiche.');}await GM_setValue(TRANSFER_KEY+'-used-'+transfer.nonce,true);await GM_setValue(TRANSFER_KEY+'-used',transfer.nonce);used=true;}
+      recovery?.stop();choiceResults={};
+      recovery=createVintedRecovery(document,product,{audit,report:draw,isBusy:()=>busy,requestRecovery:()=>run(()=>fill(false,true)),onStop:message=>{$('#status').textContent=message;}});
+    }
+    try{
+      if(!automatic){const initial=await recovery.guarded(()=>applyVintedProduct(document,product,draw,{photos,photoFiles}));recovery.arm(initial);}
+      if(recovery?.active)await recovery.reconcile();
+      await updateAck(audit());$('#status').textContent='Tentative terminée. Vérifiez chaque champ et chaque miniature native Vinted. Rien n’a été publié.';
+    }catch(error){
+      if(error.name!=='OrionPreparationStopped')throw error;
+      if(!automatic)recovery.arm(choiceResults);
+      await updateAck(audit());$('#status').textContent=errorMessage(error);
+    }
   };
-  const fill=async photos=>{if(!navigator.locks?.request)throw new Error('Verrou de sécurité indisponible dans ce navigateur. Utilisez la préparation manuelle.');return navigator.locks.request('orion-express-fill',()=>perform(photos));};
+  const fill=async(photos,automatic=false)=>{if(!navigator.locks?.request)throw new Error('Verrou de sécurité indisponible dans ce navigateur. Utilisez la préparation manuelle.');return navigator.locks.request('orion-express-fill',()=>perform(photos,automatic));};
   $('#fill').onclick=()=>run(()=>fill(true));$('#retry').onclick=()=>run(()=>fill(false));
-  $('#clear').onclick=()=>run(async()=>{await GM_deleteValue(TRANSFER_KEY);stopAudit?.();stopAudit=null;updateAudit=null;product=null;$('#live-choices').replaceChildren();needsAttention=false;reportedAttention=false;if($('#body').hidden)$('#toggle').textContent='Orion';$('#status').textContent='Transfert local effacé. Catalogue conservé.';});
+  $('#clear').onclick=()=>run(async()=>{recovery?.stop();await GM_deleteValue(TRANSFER_KEY);stopAudit?.();stopAudit=null;updateAudit=null;product=null;photoFiles=null;photoManifest=null;$('#live-choices').replaceChildren();needsAttention=false;if($('#body').hidden)$('#toggle').textContent='Orion';$('#status').textContent='Transfert local effacé. Catalogue conservé.';});
   await run(async()=>{
     if(!hasBridge())throw new Error('Stockage Violentmonkey inaccessible. Vérifiez les autorisations du script.');
     let loaded,lastError;
@@ -69,8 +93,14 @@ async function initVintedAssistant(){
       catch(e){lastError=e;loaded=null;if(!expected||i===5)throw lastError;await new Promise(r=>setTimeout(r,200));}
     }
     ({transfer,product}=loaded);
-    updateAudit=rows=>{renderVintedChoices($('#live-choices'),product,rows.map(row=>({...row,detail:!row.matches&&choiceResults[row.key]?.startsWith('Manuel')?choiceResults[row.key]:''})));needsAttention=fatalError||reportedAttention||(!busy&&used&&rows.some(row=>!row.matches));if($('#body').hidden)$('#toggle').textContent=needsAttention?'Orion !':'Orion';};
-    stopAudit?.();stopAudit=watchVintedChoices(document,product,updateAudit);
+    try{photoFiles=await preparedFiles(product);photoManifest=photoFiles.map(file=>({name:file.name,size:file.size,type:file.type,lastModified:file.lastModified}));}catch{photoFiles=undefined;photoManifest=undefined;}
+    updateAudit=rows=>{
+      renderVintedChoices($('#live-choices'),product,rows.map(row=>({...row,detail:!row.matches&&choiceResults[row.key]?.startsWith('Manuel')?choiceResults[row.key]:''})));
+      needsAttention=fatalError||(!busy&&used&&rows.some(row=>!row.matches));if($('#body').hidden)$('#toggle').textContent=needsAttention?'Orion !':'Orion';
+      recovery?.observe(rows);
+      if(used&&!busy)void updateAck(rows).catch(error=>{fatalError=true;$('#status').textContent=errorMessage(error);});
+    };
+    stopAudit?.();stopAudit=watchVintedChoices(document,product,updateAudit,{audit});
     $('#status').textContent=`Prêt : ${product.title}, ${product.photos.length} photo(s). Lancez le test lorsque le formulaire est chargé.`;
     if(expected){await waitFor(()=>visible(document.getElementById('title'))&&visible(document.getElementById('description')),20000);await acknowledgeVintedLaunch(expected,'ready');await fill(true);}
   });

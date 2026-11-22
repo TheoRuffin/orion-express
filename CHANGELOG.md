@@ -1,5 +1,14 @@
 # Historique
 
+## 3.2.7 — 22 novembre 2026
+
+- Audit des sept champs connus, des validations natives, des erreurs associées, du transfert photo et des champs supplémentaires invalides.
+- Réparations automatiques ciblées : au plus deux reprises supplémentaires par champ, session bornée à 60 secondes, valeurs relues après stabilisation.
+- Interactions manuelles, nouvelle navigation ou nouveau nonce arrêtent les écritures ; pause/reprise à la reconnexion ou au retour visible dans la session.
+- Prix vérifié sur le champ actuel, jamais sur une ancienne référence React détachée. Les valeurs de texte antérieures à la préparation restent protégées.
+- Audit et ACK restent partiels si les valeurs ou l’acceptation native des photos ne sont pas prouvées. Aucun second envoi photo ni publication.
+- Parcours, boutons, langues, données IndexedDB et navigation inchangés.
+
 ## 3.2.6 — 21 novembre 2026
 
 - Sélection mobile : visibilité effective, conteneurs cachés ignorés, dialogue complet avec pied Fait, reprise d’un modal qui masque le champ principal.

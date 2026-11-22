@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name Orion Express
 // @namespace https://github.com/TheoRuffin/orion-express
-// @version 3.2.6
+// @version 3.2.7
 // @description Catálogo local y rellenado experimental en Vinted España, sin publicar.
 // @description:fr Catalogue local et préremplissage expérimental Vinted Espagne, sans publication.
 // @match https://example.com/*
@@ -24,6 +24,25 @@
 let orionLanguage='es';
 const LANGUAGE_KEY='orion-express-language';
 const ES={
+'Vérification et correction automatiques…':'Comprobación y corrección automáticas…',
+'Valeur corrigée puis relue dans Vinted.':'Valor corregido y vuelto a comprobar en Vinted.',
+'Limite de corrections atteinte. Valeur à vérifier dans Vinted.':'Se ha alcanzado el límite de correcciones. Revisa este valor en Vinted.',
+'Correction automatique arrêtée.':'Corrección automática detenida.',
+'Le transfert a changé : rechargez le formulaire avant de préparer cette fiche.':'La transferencia ha cambiado: recarga el formulario antes de preparar esta ficha.',
+'Délai de correction atteint. Vérifiez les champs signalés.':'Se ha agotado el tiempo de corrección. Revisa los campos señalados.',
+'Navigation changée : correction automatique arrêtée.':'La navegación ha cambiado: corrección automática detenida.',
+'Préparation en pause. Reprise au retour sur le formulaire connecté.':'Preparación en pausa. Se reanuda al volver al formulario con conexión.',
+'Modification manuelle détectée : corrections automatiques arrêtées.':'Se ha detectado un cambio manual: correcciones automáticas detenidas.',
+'Champ signalé invalide par Vinted.':'Vinted indica que este campo no es válido.',
+'Valeur refusée par la validation du formulaire.':'La validación del formulario rechaza este valor.',
+'Prix invalide ou non reconnu dans Vinted.':'Precio no válido o no reconocido en Vinted.',
+'Photos natives à vérifier.':'Comprueba las miniaturas de Vinted.',
+'Photos du produit':'Fotos del producto',
+'Sélecteur photo ambigu. Photos natives à vérifier.':'Selector de fotos ambiguo. Comprueba las miniaturas de Vinted.',
+'Les fichiers du sélecteur ne correspondent pas au transfert. Photos natives à vérifier.':'Los archivos del selector no coinciden con la transferencia. Comprueba las miniaturas de Vinted.',
+'Champs supplémentaires valides':'Campos adicionales válidos',
+'Garde de préparation invalide.':'Control de preparación no válido.',
+'Élément Vinted absent ou incompatible.':'Elemento de Vinted ausente o incompatible.',
 'Chemin de catégorie à confirmer.':'Ruta de categoría por confirmar.',
 'Préparation en cours : photos puis caractéristiques…':'Preparación en curso: fotos y después características…',
 "Champ":"Campo","Fiche enregistrée":"Ficha guardada","Lu dans Vinted":"Valor en Vinted","Contrôle":"Comprobación","Choix enregistrés dans la fiche":"Opciones guardadas en la ficha","Choix de la fiche et contrôle actuel":"Opciones de la ficha y comprobación actual","Valeur vérifiée.":"Valor comprobado.","Valeur manquante dans la fiche.":"Falta este valor en la ficha.","Champ absent ou ambigu.":"Campo ausente o ambiguo.","Champ non accessible.":"Campo no accesible.","Menu encore ouvert.":"El menú sigue abierto.","Valeur différente de la fiche.":"Valor distinto al de la ficha.","État de la fiche à préciser.":"Especifica el estado en la ficha.","État non reconnu dans Vinted.":"Estado no reconocido en Vinted.","Format du colis à préciser.":"Especifica el tamaño del paquete.","Plusieurs colis sélectionnés.":"Hay varios paquetes seleccionados.","Sélection du colis non confirmée.":"Selección del paquete sin confirmar.",
@@ -170,6 +189,10 @@ function translateOrion(source) {
   const labels={'Titre / Título':'Título','Description / Descripción':'Descripción','Prix / Precio':'Precio','Catégorie / Categoría':'Categoría','Marque / Marca':'Marca','État / Estado':'Estado','Colis / Tamaño del paquete':'Tamaño del paquete'};
   if(labels[trim])return render(labels[trim]);
   const patterns=[
+    [/^Erreur associée au champ : (.*)$/s,(_,message)=>`Error asociado al campo: ${message}`],
+    [/^(\d+) photo\(s\)$/s,(_,count)=>`${count} foto(s)`],
+    [/^(\d+) fichier\(s\) dans le sélecteur$/s,(_,count)=>`${count} archivo(s) en el selector`],
+    [/^(\d+) champ\(s\) signalé\(s\) invalide\(s\)$/s,(_,count)=>`${count} campo(s) marcado(s) como no válido(s)`],
     [/^État actuel à préciser : (.*)$/s,(_,v)=>`Estado actual por precisar: ${v}`],
     [/^État vérifié : (.*)$/s,(_,v)=>`Estado verificado: ${v}`],
     [/^Enregistrer la photo (\d+)$/s,(_,n)=>`Guardar foto ${n}`],
@@ -502,12 +525,27 @@ async function readTransfer() {
   const products=await readBackup(t.backup);if(products.length!==1)throw new Error('Transfert invalide.');
   return {transfer:t,product:normalize(products[0])};
 }
+const vintedMutationGuards=new WeakMap();
+function setVintedMutationGuard(doc,assertFn){
+  if(typeof assertFn!=='function')throw new TypeError('Garde de préparation invalide.');
+  const previous=vintedMutationGuards.get(doc),entry={assert:assertFn};
+  vintedMutationGuards.set(doc,entry);let cleaned=false;
+  return ()=>{if(cleaned)return;cleaned=true;if(vintedMutationGuards.get(doc)===entry){if(previous)vintedMutationGuards.set(doc,previous);else vintedMutationGuards.delete(doc);}};
+}
+function assertVintedMutationAllowed(doc){vintedMutationGuards.get(doc)?.assert();}
+function clickVintedElement(el){
+  if(!el || typeof el.click!=='function')throw new Error('Élément Vinted absent ou incompatible.');
+  assertVintedMutationAllowed(el.ownerDocument);el.click();
+}
 function setNativeValue(input,value) {
   if(!input || input.disabled || input.readOnly)throw new Error('Champ absent ou non modifiable.');
   const proto=input.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;
   const setter=Object.getOwnPropertyDescriptor(proto,'value')?.set;
   if(!setter)throw new Error('Type de champ non pris en charge.');
-  setter.call(input,String(value));input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.blur();
+  assertVintedMutationAllowed(input.ownerDocument);setter.call(input,String(value));
+  assertVintedMutationAllowed(input.ownerDocument);input.dispatchEvent(new Event('input',{bubbles:true}));
+  assertVintedMutationAllowed(input.ownerDocument);input.dispatchEvent(new Event('change',{bubbles:true}));
+  assertVintedMutationAllowed(input.ownerDocument);input.blur();
 }
 function transferFiles(input,files) {
   if(!input || input.type!=='file' || input.disabled || (!input.multiple && files.length>1))throw new Error('Sélecteur photo absent ou incompatible.');
@@ -543,17 +581,20 @@ function parseVintedPrice(raw) {
   if(!/^\d+(?:[.,]\d{1,2})?$/.test(text))throw new Error('Prix invalide : utilisez par exemple 10, 10.00, 10,00 ou 10 €.');
   return parseVintedPrice(Number(text.replace(',','.')));
 }
-async function setVintedPrice(doc,raw) {
+async function setVintedPrice(doc,raw,{replace=false}={}) {
   const amount=parseVintedPrice(raw); // validate before touching the DOM
+  assertVintedMutationAllowed(doc);
   const el=await waitFor(()=>{try{return uniqueField(doc,'price');}catch{return null;}},4500);
   const previous=el.value;
   const existing=(()=>{try{return parseVintedPrice(previous);}catch{return null;}})();
-  if(existing!==null && existing!==0 && existing!==amount)throw new Error('Le prix contient déjà une autre valeur ; aucun écrasement.');
-  el.focus();setNativeValue(el,amount.toFixed(2));
-  await waitFor(()=>{try{return parseVintedPrice(el.value)===amount;}catch{return false;}},4500);
-  // Allow a delayed formatting/controlled-state update, then check again.
-  await new Promise(r=>setTimeout(r,250));
-  if(parseVintedPrice(el.value)!==amount)throw new Error('Prix non conservé après formatage.');
+  if(!replace && existing!==null && existing!==0 && existing!==amount)throw new Error('Le prix contient déjà une autre valeur ; aucun écrasement.');
+  assertVintedMutationAllowed(doc);el.focus();setNativeValue(el,amount.toFixed(2));
+  // React may replace the input while formatting: only the current visible field counts.
+  await waitForStable(()=>{
+    assertVintedMutationAllowed(doc);
+    try{return parseVintedPrice(uniqueField(doc,'price').value)===amount;}catch{return false;}
+  },300,4500);
+  assertVintedMutationAllowed(doc);
   return `Prix vérifié : ${amount.toFixed(2)} €`;
 }
 const isVintedSelected=e=>{
@@ -613,13 +654,15 @@ function pickerTrigger(doc,id){
 }
 async function selectVintedChoice(doc,id,value) {
   if(id==='condition')return selectVintedCondition(doc,value);
+  assertVintedMutationAllowed(doc);
   if(id==='category')clearVintedCategoryEvidence(doc);
   const path=parts(value);if(!path.length)throw new Error('Valeur manquante dans la fiche.');const target=path.at(-1);
   const trigger=await waitFor(()=>pickerTrigger(doc,id),4500);
+  assertVintedMutationAllowed(doc);
   const searchId=id==='category'?'catalog-search-input':`${id}-search-input`;
   const menuVisible=()=>visible(doc.getElementById(searchId)) || visible(popupFor(doc,trigger));
   if(fold(selectedText(trigger))===fold(target) && path.length===1 && trigger.getAttribute('aria-expanded')!=='true' && !menuVisible())return `Sélection vérifiée : ${target}`;
-  if(trigger.getAttribute('aria-expanded')!=='true' && !menuVisible())trigger.click();
+  if(trigger.getAttribute('aria-expanded')!=='true' && !menuVisible())clickVintedElement(trigger);
   try {
     const search=await waitFor(()=>{
       const exact=doc.getElementById(searchId);
@@ -638,11 +681,11 @@ async function selectVintedChoice(doc,id,value) {
     const menuRoot=popupFor(doc,trigger,chosen.el);
     const closed=()=>visible(doc.getElementById(id)) && doc.getElementById(id)?.getAttribute('aria-expanded')!=='true' && fold(selectedText(doc.getElementById(id)))===fold(target) && !findChoice() && (!menuRoot || !menuRoot.isConnected || !visible(menuRoot)) && (!search || !visible(doc.getElementById(search.id)));
     // Selection belongs to the live component. A nested native checked flag alone is not enough.
-    if(!isVintedSelected(chosen.el))chosen.el.click();
+    if(!isVintedSelected(chosen.el))clickVintedElement(chosen.el);
     try{await waitFor(()=>isVintedSelected(findChoice()?.el)||closed(),500);}catch{
       const cell=findChoice()?.el;
       const radio=cell?.matches('input[type=radio]')?cell:cell?.querySelector('input[type=radio]');
-      if(radio && !radio.disabled)radio.click(); // only the same exact option, once
+      if(radio && !radio.disabled)clickVintedElement(radio); // only the same exact option, once
     }
     await waitFor(()=>isVintedSelected(findChoice()?.el)||closed(),3500);
     // Only exact confirmation labels; never Add/Publish/Save draft.
@@ -653,11 +696,12 @@ async function selectVintedChoice(doc,id,value) {
       const buttons=[...scope.querySelectorAll('button')].filter(e=>visible(e) && e.getAttribute('aria-disabled')!=='true' && ['fait','listo','hecho','done'].includes(fold(e.textContent)));
       if(buttons.length===1)return {button:buttons[0]};return null;
     },4500);
-    if(confirm.button){if(!isVintedSelected(findChoice()?.el))throw new Error('Option non sélectionnée : confirmation annulée.');confirm.button.click();}
+    if(confirm.button){if(!isVintedSelected(findChoice()?.el))throw new Error('Option non sélectionnée : confirmation annulée.');clickVintedElement(confirm.button);}
     await waitForStable(closed,300);
+    assertVintedMutationAllowed(doc);
     if(id==='category' && path.length>1)vintedCategoryEvidence.set(doc,{path:categoryEvidencePath(value),leaf:fold(target)});
     return `Sélection vérifiée : ${chosen.title}${id==='category' && chosen.path.length?' ('+chosen.path.join(' > ')+')':''}`;
-  }catch(e){throw new Error(`${id} : ${errorMessage(e)}`);}
+  }catch(e){if(e?.name==='OrionPreparationStopped')throw e;throw new Error(`${id} : ${errorMessage(e)}`);}
 }
 function vintedShippingSize(value){
   const aliases={petit:1,pequeno:1,small:1,moyen:2,mediano:2,medium:2,grand:3,grande:3,large:3};const size=aliases[fold(value)];
@@ -675,27 +719,28 @@ function shippingSelected(doc,size){
   return true;
 }
 async function selectVintedShipping(doc,value) {
+  assertVintedMutationAllowed(doc);
   const size=vintedShippingSize(value);
   await waitFor(()=>{const cell=doc.getElementById(`package-size-${size}`);return visible(cell) && doc.getElementById(`package_type_selector_${size}`);},6000);
   for(let attempt=0;attempt<2;attempt++){
     if(!shippingSelected(doc,size)) {
       const cell=doc.getElementById(`package-size-${size}`),radio=doc.getElementById(`package_type_selector_${size}`);
       const label=[...cell.querySelectorAll('label')].find(l=>l.htmlFor===radio.id) || [...doc.querySelectorAll('label')].find(l=>l.htmlFor===radio.id);
-      const control=[cell,label,radio].find(visible);if(!control)throw new Error('Choix du colis non accessible.');control.click();
-      try{await waitFor(()=>shippingSelected(doc,size),600);}catch{const liveRadio=doc.getElementById(`package_type_selector_${size}`);if(liveRadio && !liveRadio.disabled)liveRadio.click();}
+      const control=[cell,label,radio].find(visible);if(!control)throw new Error('Choix du colis non accessible.');clickVintedElement(control);
+      try{await waitFor(()=>shippingSelected(doc,size),600);}catch{const liveRadio=doc.getElementById(`package_type_selector_${size}`);if(liveRadio && !liveRadio.disabled)clickVintedElement(liveRadio);}
     }
-    try{await waitForStable(()=>shippingSelected(doc,size),900,2200);return `Colis vérifié : ${value}`;}catch{if(attempt===1)throw new Error('Le colis demandé ne reste pas sélectionné. Vérifiez le format dans Vinted.');}
+    try{await waitForStable(()=>shippingSelected(doc,size),900,2200);assertVintedMutationAllowed(doc);return `Colis vérifié : ${value}`;}catch(e){if(e?.name==='OrionPreparationStopped')throw e;if(attempt===1)throw new Error('Le colis demandé ne reste pas sélectionné. Vérifiez le format dans Vinted.');}
   }
 }
-async function applyVintedProduct(doc,product,report,{photos=true}={}) {
+async function applyVintedProduct(doc,product,report,{photos=true,photoFiles}={}) {
   const hadContent=['title','description'].some(id=>String(doc.getElementById(id)?.value || '').trim());
-  const results={};const attempt=async(key,fn)=>{try{const message=await fn();results[key]=message || 'À vérifier dans Vinted';}catch(e){results[key]='Manuel : '+errorMessage(e);}report({...results});};
+  const results={};const attempt=async(key,fn)=>{assertVintedMutationAllowed(doc);try{const message=await fn();results[key]=message || 'À vérifier dans Vinted';}catch(e){if(e.name==='OrionPreparationStopped')throw e;results[key]='Manuel : '+errorMessage(e);}report({...results});};
   // Photos first: later category-dependent fields must follow native upload/loading updates.
   if(photos)await attempt('photos',async()=>{
     if(hadContent)throw new Error('Le formulaire contenait déjà du texte : ajout automatique de photos désactivé pour éviter les doublons.');
     const inputs=[...doc.querySelectorAll('input[type=file]')].filter(e=>!e.disabled && e.multiple);
     if(inputs.length!==1)throw new Error('Sélecteur photo absent ou ambigu.');
-    const files=await preparedFiles({photos:product.photos});transferFiles(inputs[0],files);
+    const files=photoFiles ?? await preparedFiles({photos:product.photos});assertVintedMutationAllowed(doc);transferFiles(inputs[0],files);
     await waitForStable(()=>![...doc.querySelectorAll('[role=progressbar],[aria-busy="true"]')].some(visible),900,15000);
     return 'Fichiers transmis au sélecteur ; téléversement à vérifier';
   });
@@ -763,12 +808,14 @@ const conditionSelected=cell=>{
  return cell.matches('input[type=radio]')?cell.checked:!!cell.querySelector('input[type=radio]:checked');
 };
 async function selectVintedCondition(doc,value){
+ assertVintedMutationAllowed(doc);
  const desired=resolveOrionCondition(value); // Reject "Neuf" before opening the menu.
  const trigger=await waitFor(()=>pickerTrigger(doc,'condition'),4500);
+ assertVintedMutationAllowed(doc);
  const currentMatches=()=>{try{return resolveOrionCondition(selectedText(doc.getElementById('condition'))).key===desired.key;}catch{return false;}};
  const menuAlreadyVisible=()=>{const scope=popupFor(doc,trigger);return scope && visible(scope) && [...scope.querySelectorAll('[role=radio],[role=option]')].some(cell=>visible(cell)&&conditionOfCell(cell));};
  if(currentMatches() && trigger.getAttribute('aria-expanded')!=='true' && !menuAlreadyVisible())return `État vérifié : ${selectedText(trigger)}`;
- if(trigger.getAttribute('aria-expanded')!=='true' && !menuAlreadyVisible())trigger.click();
+ if(trigger.getAttribute('aria-expanded')!=='true' && !menuAlreadyVisible())clickVintedElement(trigger);
  let chosen;
  const findCell=()=>{
    const scope=popupFor(doc,trigger) || doc;
@@ -778,10 +825,10 @@ async function selectVintedCondition(doc,value){
  chosen=await waitFor(findCell,4500);
  const menuRoot=popupFor(doc,trigger,chosen);
  // Click the actual semantic cell, not a nested radio whose DOM checked state can bypass the component.
- chosen.click();
+ clickVintedElement(chosen);
  const closed=()=>visible(doc.getElementById('condition')) && currentMatches() && doc.getElementById('condition')?.getAttribute('aria-expanded')!=='true' && (!findCell()) && (!menuRoot || !menuRoot.isConnected || !visible(menuRoot));
  // Some mobile variants bind only the native radio's change handler. Retry that same precise option once.
- try{await waitFor(()=>conditionSelected(findCell()) || closed(),500);}catch{const cell=findCell();const input=cell?.matches('input[type=radio]')?cell:cell?.querySelector('input[type=radio]');if(input && !input.disabled)input.click();}
+ try{await waitFor(()=>conditionSelected(findCell()) || closed(),500);}catch{const cell=findCell();const input=cell?.matches('input[type=radio]')?cell:cell?.querySelector('input[type=radio]');if(input && !input.disabled)clickVintedElement(input);}
  await waitFor(()=>conditionSelected(findCell()) || closed(),3500);
  const action=await waitFor(()=>{
    if(closed())return {closed:true};
@@ -792,9 +839,10 @@ async function selectVintedCondition(doc,value){
  },4500);
  if(action.button){
    if(!conditionSelected(findCell()))throw new Error('État non coché : confirmation annulée.');
-   action.button.click();
+   clickVintedElement(action.button);
  }
  await waitFor(closed,4500);
+ assertVintedMutationAllowed(doc);
  return `État vérifié : ${selectedText(doc.getElementById('condition'))}`;
 }
 
@@ -889,7 +937,7 @@ function auditShippingChoice(doc,product){
 function auditVintedChoices(doc,product){
  return [auditTextChoice(doc,product,'category'),auditTextChoice(doc,product,'condition'),auditShippingChoice(doc,product)];
 }
-function watchVintedChoices(doc,product,onChange){
+function watchVintedChoices(doc,product,onChange,{audit=auditVintedChoices}={}){
  const view=doc.defaultView;
  let stopped=false,queued=false,last;
  const own=node=>{
@@ -898,7 +946,7 @@ function watchVintedChoices(doc,product,onChange){
  };
  const check=()=>{
    if(stopped)return;
-   const rows=auditVintedChoices(doc,product),signature=JSON.stringify(rows);
+   const rows=audit(doc,product),signature=JSON.stringify(rows);
    if(signature!==last){last=signature;onChange(rows);}
  };
  const schedule=()=>{if(stopped||queued)return;queued=true;queueMicrotask(()=>{queued=false;check();});};
@@ -915,6 +963,205 @@ function watchVintedChoices(doc,product,onChange){
    view.removeEventListener('pagehide',onPageHide);view.removeEventListener('pageshow',onPageShow);
  }
  view.addEventListener('pagehide',onPageHide);view.addEventListener('pageshow',onPageShow);check();return stop;
+}
+
+// Read-only form audit. FileList proves a local hand-off, never native upload acceptance.
+function auditFormField(doc,id,tag){
+  const fields=[...doc.querySelectorAll(`[id="${id}"]`)].filter(node=>(!tag || node.tagName===tag) && visible(node));
+  return fields.length===1?fields[0]:null;
+}
+const auditFormText=value=>String(value ?? '').replace(/\r\n/g,'\n');
+function auditAssociatedError(doc,field){
+  for(const attribute of ['aria-errormessage','aria-describedby']){
+    const ids=String(field.getAttribute(attribute) || '').split(/\s+/).filter(Boolean);
+    for(const id of ids){
+      const node=doc.getElementById(id);
+      if(!visible(node) || !node.textContent?.trim())continue;
+      const error=attribute==='aria-errormessage' || node.getAttribute('role')==='alert' || node.getAttribute('aria-live')==='assertive' || /(?:^|[-_])(error|errors|erreur|invalid)(?:$|[-_])/i.test(id) || node.matches('[data-testid$="--error"]');
+      if(error)return 'Erreur associée au champ : '+node.textContent.trim();
+    }
+  }
+  return '';
+}
+function auditFormError(doc,field,{emptyInvalid=false}={}){
+  if(!field)return '';
+  if(field.getAttribute('aria-invalid')==='true')return 'Champ signalé invalide par Vinted.';
+  const associated=auditAssociatedError(doc,field);if(associated)return associated;
+  if(field.validity?.valid===false && (emptyInvalid || String(field.value || '').length))return 'Valeur refusée par la validation du formulaire.';
+  return '';
+}
+function auditFormValue(doc,product,key){
+  const field=auditFormField(doc,key,key==='description'?'TEXTAREA':'INPUT');
+  const expected=auditFormText(product?.[key]),actual=auditFormText(field?.value);
+  const row={key,expected,actual,matches:false,reason:''};
+  if(!field){row.reason='Champ absent ou ambigu.';return row;}
+  const error=auditFormError(doc,field);if(error){row.reason=error;return row;}
+  if(!expected.trim()){row.reason='Valeur manquante dans la fiche.';return row;}
+  if(key==='price'){
+    try{row.matches=Math.round(parseVintedPrice(expected)*100)===Math.round(parseVintedPrice(actual)*100);}
+    catch{row.reason='Prix invalide ou non reconnu dans Vinted.';return row;}
+  }else row.matches=actual===expected;
+  row.reason=row.matches?'Valeur vérifiée.':'Valeur différente de la fiche.';
+  return row;
+}
+function auditBrandMenuOpen(doc,trigger){
+  if(trigger?.getAttribute('aria-expanded')==='true' || visible(doc.getElementById('brand-search-input')))return true;
+  const owned=String(trigger?.getAttribute('aria-controls') || '').split(/\s+/).filter(Boolean).map(id=>doc.getElementById(id));
+  if(owned.some(visible))return true;
+  const scope=popupFor(doc,trigger);if(!visible(scope))return false;
+  if(String(scope.getAttribute('aria-labelledby') || '').split(/\s+/).includes(trigger?.id))return true;
+  return [scope.getAttribute('aria-label'),...[...scope.querySelectorAll('h1,h2,h3,[role=heading]')].filter(visible).map(node=>node.textContent)].some(label=>['marque','marca','brand'].includes(fold(label || '')));
+}
+function auditFormBrand(doc,product){
+  const expected=String(product?.brand ?? ''),field=auditChoiceField(doc,'brand'),actual=String(selectedText(field)).trim();
+  const row={key:'brand',expected,actual,matches:false,reason:''};
+  if(!expected.trim()){row.reason='Valeur manquante dans la fiche.';return row;}
+  if(!field){row.reason='Champ absent ou ambigu.';return row;}
+  if(auditBrandMenuOpen(doc,field)){row.reason='Menu encore ouvert.';return row;}
+  if(!visible(field)){row.reason='Champ non accessible.';return row;}
+  const error=auditFormError(doc,field);if(error){row.reason=error;return row;}
+  row.matches=fold(actual)===fold(expected);row.reason=row.matches?'Valeur vérifiée.':'Valeur différente de la fiche.';
+  return row;
+}
+function auditVintedPhotos(doc,manifest,expectedCount){
+  const known=Array.isArray(manifest),count=known?manifest.length:expectedCount;
+  const row={key:'photos',expected:Number.isSafeInteger(count)?`${count} photo(s)`:'Photos du produit',actual:'',matches:false,reason:'Photos natives à vérifier.',state:'unverified'};
+  const inputs=[...doc.querySelectorAll('input[type=file]')].filter(node=>!node.disabled && node.multiple);
+  if(inputs.length!==1){row.reason=inputs.length?'Sélecteur photo ambigu. Photos natives à vérifier.':'Photos natives à vérifier.';return row;}
+  const input=inputs[0],files=[...(input.files || [])];row.actual=`${files.length} fichier(s) dans le sélecteur`;
+  const error=auditFormError(doc,input);if(error){row.reason=error;row.state='invalid';return row;}
+  if(!known)return row;
+  const same=files.length===manifest.length && files.every((file,index)=>{
+    const wanted=manifest[index];
+    return wanted && file.name===wanted.name && file.size===wanted.size && file.type===wanted.type && (wanted.lastModified===undefined || file.lastModified===wanted.lastModified);
+  });
+  row.state=same?'uploaded':'mismatch';
+  if(!same)row.reason='Les fichiers du sélecteur ne correspondent pas au transfert. Photos natives à vérifier.';
+  return row;
+}
+function auditDynamicForm(doc){
+  const title=doc.getElementById('title'),form=title?.form || title?.closest('form');if(!form)return null;
+  const known=new Set(['title','description','price','category','brand','condition']);
+  const errors=[...form.querySelectorAll('input,select,textarea,[aria-invalid="true"]')].filter(field=>visible(field) && !known.has(field.id) && field.type!=='file' && !field.id.startsWith('package_type_selector_') && !field.closest('[role=dialog],[role=menu],[role=listbox],#orion-vinted-test,#orion-express-v2') && !/search/i.test(field.type+' '+field.id)).map(field=>auditFormError(doc,field,{emptyInvalid:true})).filter(Boolean);
+  return errors.length?{key:'dynamic',expected:'Champs supplémentaires valides',actual:`${errors.length} champ(s) signalé(s) invalide(s)`,matches:false,reason:errors[0]}:null;
+}
+function auditVintedForm(doc,product,{photoManifest}={}){
+  const choices=auditVintedChoices(doc,product).map(row=>{
+    const fields=row.key==='shipping'?[...doc.querySelectorAll('input[type=radio][id^="package_type_selector_"]:checked')].flatMap(radio=>[radio,doc.getElementById('package-size-'+radio.id.slice('package_type_selector_'.length))]):[auditFormField(doc,row.key)];
+    const error=fields.map(field=>auditFormError(doc,field)).find(Boolean);
+    return error?{...row,matches:false,reason:error}:row;
+  });
+  const rows=[auditFormValue(doc,product,'title'),auditFormValue(doc,product,'description'),auditFormValue(doc,product,'price'),choices.find(row=>row.key==='category'),auditFormBrand(doc,product),choices.find(row=>row.key==='condition'),choices.find(row=>row.key==='shipping'),auditVintedPhotos(doc,photoManifest,product?.photos?.length)];
+  const dynamic=auditDynamicForm(doc);if(dynamic)rows.push(dynamic);
+  return rows;
+}
+
+// One bounded preparation session. Repairs never transfer photos or submit a form.
+const VINTED_REPAIR_FIELDS=['category','brand','condition','shipping','title','description','price'];
+function createVintedRecovery(doc,product,{audit,report=()=>{},requestRecovery=()=>{},isBusy=()=>false,onStop=()=>{},durationMs=60000,stableMs=1400,debounceMs=500,maxRepairs=2}={}){
+  const view=doc.defaultView,endsAt=Date.now()+durationMs,repairs=new Map(),owned=new Set(),nonce=new URLSearchParams(view.location.hash.slice(1)).get('orion');
+  let active=true,armed=false,working=false,queued,expiry,results={},stopReason='';
+  for(const key of ['title','description']){
+    const value=doc.getElementById(key)?.value;
+    if(value==='' || auditFormText(value)===auditFormText(product[key]))owned.add(key);
+  }
+  try{const value=doc.getElementById('price')?.value;if(!value || parseVintedPrice(value)===0 || parseVintedPrice(value)===parseVintedPrice(product.price))owned.add('price');}catch{}
+  const own=node=>!!node?.closest?.('#orion-vinted-test,#orion-express-v2') || !!node?.getRootNode?.().host?.matches?.('#orion-vinted-test,#orion-express-v2');
+  function stopped(message){const error=new Error(message);error.name='OrionPreparationStopped';return error;}
+  function stop(message='',notify=false){
+    if(!active)return;active=false;stopReason=message;view.clearTimeout(queued);view.clearTimeout(expiry);
+    for(const name of ['pointerdown','click','keydown','beforeinput'])doc.removeEventListener(name,onUser,true);
+    view.removeEventListener('pagehide',onPageHide);view.removeEventListener('pageshow',wake);view.removeEventListener('online',wake);view.removeEventListener('hashchange',onContextChange);view.removeEventListener('popstate',onContextChange);doc.removeEventListener('visibilitychange',wake);
+    if(notify)onStop(message);
+  }
+  function assertActive(){
+    if(!active)throw stopped(stopReason || 'Correction automatique arrêtée.');
+    if(Date.now()>=endsAt){stop('Délai de correction atteint. Vérifiez les champs signalés.');throw stopped(stopReason);}
+    if(view.location.hostname!=='www.vinted.es' || view.location.pathname!=='/items/new'){
+      stop('Navigation changée : correction automatique arrêtée.');throw stopped(stopReason);
+    }
+    const currentNonce=new URLSearchParams(view.location.hash.slice(1)).get('orion');
+    if(currentNonce && currentNonce!==nonce){stop('Le transfert a changé : rechargez le formulaire avant de préparer cette fiche.');throw stopped(stopReason);}
+    if(view.navigator.onLine===false || doc.visibilityState==='hidden')throw stopped('Préparation en pause. Reprise au retour sur le formulaire connecté.');
+  }
+  function onUser(event){
+    const node=event.composedPath?.()[0] || event.target;
+    if(!event.isTrusted || own(node))return;
+    if(!['pointerdown','click'].includes(event.type) || node?.closest?.('input,textarea,select,button,label,[contenteditable],[role=button],[role=radio],[role=option],[role=dialog],[id^="package-size-"]'))stop('Modification manuelle détectée : corrections automatiques arrêtées.',true);
+  }
+  function onPageHide(event){if(!event.persisted)stop();}
+  function onContextChange(){try{assertActive();}catch(error){if(!active)onStop(error.message);}}
+  function wake(){if(active)observe(audit());}
+  for(const name of ['pointerdown','click','keydown','beforeinput'])doc.addEventListener(name,onUser,true);
+  view.addEventListener('pagehide',onPageHide);view.addEventListener('pageshow',wake);view.addEventListener('online',wake);view.addEventListener('hashchange',onContextChange);view.addEventListener('popstate',onContextChange);doc.addEventListener('visibilitychange',wake);
+  expiry=view.setTimeout(()=>stop('Délai de correction atteint. Vérifiez les champs signalés.'),durationMs);
+  function eligible(row){
+    if(!row || row.matches || !VINTED_REPAIR_FIELDS.includes(row.key) || (repairs.get(row.key)||0)>=maxRepairs || !String(row.expected).trim())return false;
+    if(['title','description','price'].includes(row.key) && !owned.has(row.key))return false;
+    try{if(row.key==='condition')resolveOrionCondition(product.condition);if(row.key==='shipping')vintedShippingSize(product.shipping);if(row.key==='price')parseVintedPrice(product.price);}catch{return false;}
+    return true;
+  }
+  function candidate(rows){
+    // An existing mobile picker can make every background field inaccessible.
+    const open=rows.find(row=>VINTED_REPAIR_FIELDS.includes(row.key) && row.reason==='Menu encore ouvert.');
+    if(open)return eligible(open)?open:null;
+    const category=rows.find(row=>row.key==='category');
+    // A failed category owns the meaning of the dependent fields.
+    if(category && !category.matches)return eligible(category)?category:['title','description','price'].map(key=>rows.find(row=>row.key===key)).find(row=>eligible(row)&&visible(doc.getElementById(row.key)));
+    return VINTED_REPAIR_FIELDS.map(key=>rows.find(row=>row.key===key)).find(eligible);
+  }
+  function observe(rows){
+    if(!active || !armed || working || isBusy())return;
+    if(Date.now()>=endsAt){stop();return;}
+    if(doc.visibilityState==='hidden' || view.navigator.onLine===false || !candidate(rows))return;
+    if(queued!==undefined)return;
+    queued=view.setTimeout(()=>{queued=undefined;if(!active || working || isBusy())return;try{assertActive();if(candidate(audit()))Promise.resolve(requestRecovery()).catch(()=>{});}catch{}},debounceMs);
+  }
+  async function guarded(task){
+    assertActive();working=true;view.clearTimeout(queued);queued=undefined;
+    const cleanup=setVintedMutationGuard(doc,assertActive);
+    try{return await task();}finally{cleanup();working=false;}
+  }
+  async function repairField(key){
+    if(['title','description'].includes(key)){
+      const field=await waitFor(()=>{assertActive();try{return uniqueField(doc,key,key==='description'?'TEXTAREA':'INPUT');}catch{return null;}},4500);
+      setNativeValue(field,product[key]);
+      await waitForStable(()=>{assertActive();try{return auditFormText(uniqueField(doc,key,key==='description'?'TEXTAREA':'INPUT').value)===auditFormText(product[key]);}catch(error){if(error.name==='OrionPreparationStopped')throw error;return false;}},300,4500);
+      return 'Valeur corrigée puis relue dans Vinted.';
+    }
+    if(key==='price')return setVintedPrice(doc,product.price,{replace:true});
+    if(key==='shipping')return selectVintedShipping(doc,product.shipping);
+    return selectVintedChoice(doc,key,product[key]);
+  }
+  return {
+    guarded,
+    arm(initialResults){results={...initialResults};for(const key of ['title','description','price'])if(typeof results[key]==='string'&&!results[key].startsWith('Manuel'))owned.add(key);armed=true;},
+    observe,
+    stop,
+    async reconcile(){return guarded(async()=>{
+      for(;;){
+        assertActive();const rows=audit(),next=candidate(rows);
+        if(!next){
+          const known=rows.filter(row=>VINTED_REPAIR_FIELDS.includes(row.key));
+          if(known.some(row=>!row.matches)){
+            let changed=false;for(const row of known)if(!row.matches && (repairs.get(row.key)||0)>=maxRepairs && !results[row.key]?.startsWith('Manuel')){results[row.key]='Manuel : Limite de corrections atteinte. Valeur à vérifier dans Vinted.';changed=true;}
+            if(changed)report({...results});return {rows,stable:false};
+          }
+          const signature=JSON.stringify(known);
+          await new Promise(resolve=>view.setTimeout(resolve,stableMs));assertActive();
+          const final=audit(),finalKnown=final.filter(row=>VINTED_REPAIR_FIELDS.includes(row.key));
+          if(finalKnown.every(row=>row.matches) && JSON.stringify(finalKnown)===signature)return {rows:final,stable:true};
+          continue;
+        }
+        const key=next.key;repairs.set(key,(repairs.get(key)||0)+1);
+        try{results[key]=await repairField(key);}catch(error){if(error.name==='OrionPreparationStopped')throw error;results[key]='Manuel : '+errorMessage(error);}
+        report({...results});
+        await new Promise(resolve=>view.setTimeout(resolve,150));
+      }
+    });},
+    get active(){return active;},
+    get reason(){return stopReason;}
+  };
 }
 
 // Browser-owned navigation; a returned tab handle is never proof of a loaded form.
@@ -939,10 +1186,10 @@ const APP_CSS = ":host{all:initial;font:16px -apple-system,BlinkMacSystemFont,\"
 function renderVintedChoices(container,product,rows){
   container.replaceChildren();const doc=container.ownerDocument,table=doc.createElement('table'),head=doc.createElement('tr');
   for(const title of rows?['Champ','Fiche enregistrée','Lu dans Vinted','Contrôle']:['Champ','Fiche enregistrée']){const th=doc.createElement('th');th.scope='col';th.textContent=title;head.append(th);}table.append(head);
-  for(const key of ['category','condition','shipping']){
+  for(const key of rows?rows.map(row=>row.key):['category','condition','shipping']){
     const row=rows?.find(item=>item.key===key),tr=doc.createElement('tr');
-    const label=doc.createElement('th');label.scope='row';label.textContent=({category:'Catégorie',condition:'État',shipping:'Colis'})[key];tr.append(label);
-    for(const text of rows?[row.expected||'—',row.actual||'—']:[String(product[key]||'—')]){const td=doc.createElement('td');td.dataset.orionUser='';td.textContent=text;tr.append(td);}
+    const label=doc.createElement('th');label.scope='row';label.textContent=({title:'Titre',description:'Description',price:'Prix',category:'Catégorie',brand:'Marque',condition:'État',shipping:'Colis',photos:'Photos',dynamic:'Champs supplémentaires'})[key];tr.append(label);
+    for(const text of rows?[row.expected||'—',row.actual||'—']:[String(product[key]||'—')]){const td=doc.createElement('td');if(!['photos','dynamic'].includes(key))td.dataset.orionUser='';td.textContent=text;tr.append(td);}
     if(row){const td=doc.createElement('td');td.textContent=row.matches?'Valeur vérifiée.':row.reason;td.style.color=row.matches?'#087b67':'#a23d17';if(!row.matches&&row.detail){const detail=doc.createElement('p');detail.textContent=row.detail;td.append(detail);}tr.append(td);}table.append(tr);
   }container.append(table);
 }
@@ -980,24 +1227,48 @@ async function initVintedAssistant(){
   const host=document.createElement('div');host.id='orion-vinted-test';host.style.cssText='position:fixed;right:calc(env(safe-area-inset-right, 0px) + 8px);bottom:calc(env(safe-area-inset-bottom, 0px) + 8px);z-index:2147483646;max-width:calc(100vw - 16px);width:auto';
   const root=host.attachShadow({mode:'open'});root.innerHTML=`<style>:host{font:15px -apple-system,sans-serif;color:#172b35}*{box-sizing:border-box}section{width:min(360px,calc(100vw - 16px));padding:14px;background:#f6f5ef;border:2px solid #087b67;border-radius:14px;max-height:55vh;overflow:auto}button,a{font:inherit;display:inline-block;padding:12px;min-height:44px;margin:4px;border-radius:9px;border:1px solid #087b67;background:white;color:#087b67}p,li{line-height:1.4}table{width:100%;border-collapse:collapse;font-size:12px}td,th{padding:5px;text-align:left;vertical-align:top;overflow-wrap:anywhere;border-bottom:1px solid #ddd}ul{padding-left:18px}textarea{width:100%;font-size:16px}#toggle{position:sticky;top:0;z-index:1}section.folded [data-orion-languages]{display:none!important}section.folded{width:auto;padding:0;border:0;background:transparent}section.folded #toggle{margin:0;padding:8px 12px;min-height:44px;border-radius:22px;background:#087b67;color:white}</style><section class="folded"><button id="toggle" aria-label="Ouvrir Orion" aria-expanded="false">Orion</button><div id="body" hidden><b>Orion Express · préremplissage expérimental</b><p id="status" role="status">Chargement du transfert local…</p><button id="fill" disabled>Préremplir une seule fois</button><button id="retry" disabled>Réessayer les textes et choix (sans photos)</button><h3>Choix de la fiche et contrôle actuel</h3><div id="live-choices" aria-live="polite"></div><ul id="result"></ul><p>Aucune publication ni sauvegarde de brouillon automatique. La présence dans un champ ne confirme pas sa validation par Vinted. Vérifiez les photos et les champs dépendants après chaque changement de catégorie.</p><a href="https://example.com/" target="_blank" rel="noopener">Retour au catalogue</a><button id="clear">Effacer le transfert local</button></div></section>`;document.body.append(host);
   attachOrionLanguage(root,root.querySelector('section'));
-  const $=s=>root.querySelector(s);let busy=false,used=false,needsAttention=false,product,transfer,updateAudit,stopAudit;let reportedAttention=false,fatalError=false,choiceResults={};
+  const $=s=>root.querySelector(s);let busy=false,used=false,needsAttention=false,product,transfer,updateAudit,stopAudit,recovery,photoFiles,photoManifest;
+  let fatalError=false,choiceResults={},ackState,ackChain=Promise.resolve();
+  const audit=()=>auditVintedForm(document,product,{photoManifest});
+  const updateAck=rows=>{
+    if(!used || !transfer)return ackChain;
+    const state=fatalError?'error':rows.some(row=>!row.matches)?'partial':'complete';
+    if(state===ackState)return ackChain;ackState=state;
+    ackChain=ackChain.catch(()=>{}).then(()=>acknowledgeVintedLaunch(transfer.nonce,state)).catch(error=>{ackState=null;throw error;});return ackChain;
+  };
   const expected=new URLSearchParams(location.hash.slice(1)).get('orion');
   $('#toggle').onclick=()=>{const body=$('#body');body.hidden=!body.hidden;$('#toggle').textContent=body.hidden?(needsAttention?'Orion !':'Orion'):'Réduire';$('#toggle').setAttribute('aria-label',body.hidden?'Ouvrir Orion':'Réduire Orion');$('#toggle').setAttribute('aria-expanded',String(!body.hidden));root.querySelector('section').classList.toggle('folded',body.hidden);};
-  const run=async(fn)=>{if(busy)return;busy=true;fatalError=false;$('#fill').disabled=true;$('#retry').disabled=true;try{await fn();}catch(e){if(expected||transfer?.nonce)await acknowledgeVintedLaunch(expected||transfer.nonce,'error').catch(()=>{});fatalError=true;needsAttention=true;$('#status').textContent=errorMessage(e);if($('#body').hidden)$('#toggle').textContent='Orion !';}finally{busy=false;$('#fill').disabled=used||!product;$('#retry').disabled=!used||!product;if(updateAudit&&product)updateAudit(auditVintedChoices(document,product));}};
-  const perform=async(photos)=>{
-    choiceResults={};
-    $('#status').textContent='Préparation en cours : photos puis caractéristiques…';
+  const run=async(fn)=>{if(busy)return;busy=true;fatalError=false;$('#fill').disabled=true;$('#retry').disabled=true;try{await fn();}catch(e){if(expected||transfer?.nonce)await acknowledgeVintedLaunch(expected||transfer.nonce,'error').catch(()=>{});fatalError=true;needsAttention=true;$('#status').textContent=errorMessage(e);if($('#body').hidden)$('#toggle').textContent='Orion !';}finally{busy=false;$('#fill').disabled=used||!product;$('#retry').disabled=!used||!product;if(updateAudit&&product)updateAudit(audit());}};
+  const draw=results=>{
+    choiceResults=results;$('#result').replaceChildren();
+    for(const [key,value]of Object.entries(results)){if(VINTED_REPAIR_FIELDS.includes(key))continue;const li=document.createElement('li');li.textContent=`${({photos:'Photos',dynamic:'Champs supplémentaires'})[key] || key} : ${value}`;$('#result').append(li);}
+    updateAudit?.(audit());
+  };
+  const perform=async(photos,automatic=false)=>{
+    if(automatic&&!recovery?.active)return;
+    $('#status').textContent='Vérification et correction automatiques…';
     if(location.pathname!=='/items/new')throw new Error('Ouvrez le formulaire de création Vinted.');
     if(!navigator.onLine)throw new Error('Connexion indisponible. Aucun transfert lancé.');
-    if(photos){uniqueField(document,'title');uniqueField(document,'description','TEXTAREA');}
-    else if(!document.getElementById('title')||!document.getElementById('description'))throw new Error('Ouvrez le formulaire de création Vinted.');
-    if(photos){const lock=await GM_getValue(TRANSFER_KEY+'-used','');if(lock===transfer.nonce || await GM_getValue(TRANSFER_KEY+'-used-'+transfer.nonce,false)){used=true;throw new Error('Ce transfert a déjà été tenté. Reprenez les textes sans photos ou préparez de nouveau la fiche.');}await GM_setValue(TRANSFER_KEY+'-used-'+transfer.nonce,true);await GM_setValue(TRANSFER_KEY+'-used',transfer.nonce);used=true;}
-    const draw=results=>{choiceResults=results;reportedAttention=Object.entries(results).some(([key,value])=>!['dynamic','category','condition','shipping'].includes(key) && value.startsWith('Manuel'));$('#result').replaceChildren();for(const [k,v]of Object.entries(results)){if(['category','condition','shipping'].includes(k))continue;const li=document.createElement('li');li.textContent=`${Object.fromEntries(PREP_FIELDS)[k] || ({photos:'Photos',dynamic:'Champs supplémentaires'})[k] || k} : ${v}`;$('#result').append(li);}updateAudit?.(auditVintedChoices(document,product));};
-    const results=await applyVintedProduct(document,product,draw,{photos});const choices=auditVintedChoices(document,product);await acknowledgeVintedLaunch(transfer.nonce,choices.some(row=>!row.matches)||Object.entries(results).some(([key,value])=>key!=='dynamic'&&value.startsWith('Manuel'))?'partial':'complete');$('#status').textContent='Tentative terminée. Vérifiez chaque champ et chaque miniature native Vinted. Rien n’a été publié.';
+    if(!automatic){
+      if(photos){uniqueField(document,'title');uniqueField(document,'description','TEXTAREA');}
+      else if(!document.getElementById('title')||!document.getElementById('description'))throw new Error('Ouvrez le formulaire de création Vinted.');
+      if(photos){const lock=await GM_getValue(TRANSFER_KEY+'-used','');if(lock===transfer.nonce || await GM_getValue(TRANSFER_KEY+'-used-'+transfer.nonce,false)){used=true;throw new Error('Ce transfert a déjà été tenté. Reprenez les textes sans photos ou préparez de nouveau la fiche.');}await GM_setValue(TRANSFER_KEY+'-used-'+transfer.nonce,true);await GM_setValue(TRANSFER_KEY+'-used',transfer.nonce);used=true;}
+      recovery?.stop();choiceResults={};
+      recovery=createVintedRecovery(document,product,{audit,report:draw,isBusy:()=>busy,requestRecovery:()=>run(()=>fill(false,true)),onStop:message=>{$('#status').textContent=message;}});
+    }
+    try{
+      if(!automatic){const initial=await recovery.guarded(()=>applyVintedProduct(document,product,draw,{photos,photoFiles}));recovery.arm(initial);}
+      if(recovery?.active)await recovery.reconcile();
+      await updateAck(audit());$('#status').textContent='Tentative terminée. Vérifiez chaque champ et chaque miniature native Vinted. Rien n’a été publié.';
+    }catch(error){
+      if(error.name!=='OrionPreparationStopped')throw error;
+      if(!automatic)recovery.arm(choiceResults);
+      await updateAck(audit());$('#status').textContent=errorMessage(error);
+    }
   };
-  const fill=async photos=>{if(!navigator.locks?.request)throw new Error('Verrou de sécurité indisponible dans ce navigateur. Utilisez la préparation manuelle.');return navigator.locks.request('orion-express-fill',()=>perform(photos));};
+  const fill=async(photos,automatic=false)=>{if(!navigator.locks?.request)throw new Error('Verrou de sécurité indisponible dans ce navigateur. Utilisez la préparation manuelle.');return navigator.locks.request('orion-express-fill',()=>perform(photos,automatic));};
   $('#fill').onclick=()=>run(()=>fill(true));$('#retry').onclick=()=>run(()=>fill(false));
-  $('#clear').onclick=()=>run(async()=>{await GM_deleteValue(TRANSFER_KEY);stopAudit?.();stopAudit=null;updateAudit=null;product=null;$('#live-choices').replaceChildren();needsAttention=false;reportedAttention=false;if($('#body').hidden)$('#toggle').textContent='Orion';$('#status').textContent='Transfert local effacé. Catalogue conservé.';});
+  $('#clear').onclick=()=>run(async()=>{recovery?.stop();await GM_deleteValue(TRANSFER_KEY);stopAudit?.();stopAudit=null;updateAudit=null;product=null;photoFiles=null;photoManifest=null;$('#live-choices').replaceChildren();needsAttention=false;if($('#body').hidden)$('#toggle').textContent='Orion';$('#status').textContent='Transfert local effacé. Catalogue conservé.';});
   await run(async()=>{
     if(!hasBridge())throw new Error('Stockage Violentmonkey inaccessible. Vérifiez les autorisations du script.');
     let loaded,lastError;
@@ -1007,8 +1278,14 @@ async function initVintedAssistant(){
       catch(e){lastError=e;loaded=null;if(!expected||i===5)throw lastError;await new Promise(r=>setTimeout(r,200));}
     }
     ({transfer,product}=loaded);
-    updateAudit=rows=>{renderVintedChoices($('#live-choices'),product,rows.map(row=>({...row,detail:!row.matches&&choiceResults[row.key]?.startsWith('Manuel')?choiceResults[row.key]:''})));needsAttention=fatalError||reportedAttention||(!busy&&used&&rows.some(row=>!row.matches));if($('#body').hidden)$('#toggle').textContent=needsAttention?'Orion !':'Orion';};
-    stopAudit?.();stopAudit=watchVintedChoices(document,product,updateAudit);
+    try{photoFiles=await preparedFiles(product);photoManifest=photoFiles.map(file=>({name:file.name,size:file.size,type:file.type,lastModified:file.lastModified}));}catch{photoFiles=undefined;photoManifest=undefined;}
+    updateAudit=rows=>{
+      renderVintedChoices($('#live-choices'),product,rows.map(row=>({...row,detail:!row.matches&&choiceResults[row.key]?.startsWith('Manuel')?choiceResults[row.key]:''})));
+      needsAttention=fatalError||(!busy&&used&&rows.some(row=>!row.matches));if($('#body').hidden)$('#toggle').textContent=needsAttention?'Orion !':'Orion';
+      recovery?.observe(rows);
+      if(used&&!busy)void updateAck(rows).catch(error=>{fatalError=true;$('#status').textContent=errorMessage(error);});
+    };
+    stopAudit?.();stopAudit=watchVintedChoices(document,product,updateAudit,{audit});
     $('#status').textContent=`Prêt : ${product.title}, ${product.photos.length} photo(s). Lancez le test lorsque le formulaire est chargé.`;
     if(expected){await waitFor(()=>visible(document.getElementById('title'))&&visible(document.getElementById('description')),20000);await acknowledgeVintedLaunch(expected,'ready');await fill(true);}
   });

@@ -2,6 +2,25 @@
 let orionLanguage='es';
 const LANGUAGE_KEY='orion-express-language';
 const ES={
+'Vérification et correction automatiques…':'Comprobación y corrección automáticas…',
+'Valeur corrigée puis relue dans Vinted.':'Valor corregido y vuelto a comprobar en Vinted.',
+'Limite de corrections atteinte. Valeur à vérifier dans Vinted.':'Se ha alcanzado el límite de correcciones. Revisa este valor en Vinted.',
+'Correction automatique arrêtée.':'Corrección automática detenida.',
+'Le transfert a changé : rechargez le formulaire avant de préparer cette fiche.':'La transferencia ha cambiado: recarga el formulario antes de preparar esta ficha.',
+'Délai de correction atteint. Vérifiez les champs signalés.':'Se ha agotado el tiempo de corrección. Revisa los campos señalados.',
+'Navigation changée : correction automatique arrêtée.':'La navegación ha cambiado: corrección automática detenida.',
+'Préparation en pause. Reprise au retour sur le formulaire connecté.':'Preparación en pausa. Se reanuda al volver al formulario con conexión.',
+'Modification manuelle détectée : corrections automatiques arrêtées.':'Se ha detectado un cambio manual: correcciones automáticas detenidas.',
+'Champ signalé invalide par Vinted.':'Vinted indica que este campo no es válido.',
+'Valeur refusée par la validation du formulaire.':'La validación del formulario rechaza este valor.',
+'Prix invalide ou non reconnu dans Vinted.':'Precio no válido o no reconocido en Vinted.',
+'Photos natives à vérifier.':'Comprueba las miniaturas de Vinted.',
+'Photos du produit':'Fotos del producto',
+'Sélecteur photo ambigu. Photos natives à vérifier.':'Selector de fotos ambiguo. Comprueba las miniaturas de Vinted.',
+'Les fichiers du sélecteur ne correspondent pas au transfert. Photos natives à vérifier.':'Los archivos del selector no coinciden con la transferencia. Comprueba las miniaturas de Vinted.',
+'Champs supplémentaires valides':'Campos adicionales válidos',
+'Garde de préparation invalide.':'Control de preparación no válido.',
+'Élément Vinted absent ou incompatible.':'Elemento de Vinted ausente o incompatible.',
 'Chemin de catégorie à confirmer.':'Ruta de categoría por confirmar.',
 'Préparation en cours : photos puis caractéristiques…':'Preparación en curso: fotos y después características…',
 "Champ":"Campo","Fiche enregistrée":"Ficha guardada","Lu dans Vinted":"Valor en Vinted","Contrôle":"Comprobación","Choix enregistrés dans la fiche":"Opciones guardadas en la ficha","Choix de la fiche et contrôle actuel":"Opciones de la ficha y comprobación actual","Valeur vérifiée.":"Valor comprobado.","Valeur manquante dans la fiche.":"Falta este valor en la ficha.","Champ absent ou ambigu.":"Campo ausente o ambiguo.","Champ non accessible.":"Campo no accesible.","Menu encore ouvert.":"El menú sigue abierto.","Valeur différente de la fiche.":"Valor distinto al de la ficha.","État de la fiche à préciser.":"Especifica el estado en la ficha.","État non reconnu dans Vinted.":"Estado no reconocido en Vinted.","Format du colis à préciser.":"Especifica el tamaño del paquete.","Plusieurs colis sélectionnés.":"Hay varios paquetes seleccionados.","Sélection du colis non confirmée.":"Selección del paquete sin confirmar.",
@@ -148,6 +167,10 @@ function translateOrion(source) {
   const labels={'Titre / Título':'Título','Description / Descripción':'Descripción','Prix / Precio':'Precio','Catégorie / Categoría':'Categoría','Marque / Marca':'Marca','État / Estado':'Estado','Colis / Tamaño del paquete':'Tamaño del paquete'};
   if(labels[trim])return render(labels[trim]);
   const patterns=[
+    [/^Erreur associée au champ : (.*)$/s,(_,message)=>`Error asociado al campo: ${message}`],
+    [/^(\d+) photo\(s\)$/s,(_,count)=>`${count} foto(s)`],
+    [/^(\d+) fichier\(s\) dans le sélecteur$/s,(_,count)=>`${count} archivo(s) en el selector`],
+    [/^(\d+) champ\(s\) signalé\(s\) invalide\(s\)$/s,(_,count)=>`${count} campo(s) marcado(s) como no válido(s)`],
     [/^État actuel à préciser : (.*)$/s,(_,v)=>`Estado actual por precisar: ${v}`],
     [/^État vérifié : (.*)$/s,(_,v)=>`Estado verificado: ${v}`],
     [/^Enregistrer la photo (\d+)$/s,(_,n)=>`Guardar foto ${n}`],

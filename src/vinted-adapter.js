@@ -19,12 +19,27 @@ export async function readTransfer() {
   const products=await readBackup(t.backup);if(products.length!==1)throw new Error('Transfert invalide.');
   return {transfer:t,product:normalize(products[0])};
 }
+const vintedMutationGuards=new WeakMap();
+export function setVintedMutationGuard(doc,assertFn){
+  if(typeof assertFn!=='function')throw new TypeError('Garde de préparation invalide.');
+  const previous=vintedMutationGuards.get(doc),entry={assert:assertFn};
+  vintedMutationGuards.set(doc,entry);let cleaned=false;
+  return ()=>{if(cleaned)return;cleaned=true;if(vintedMutationGuards.get(doc)===entry){if(previous)vintedMutationGuards.set(doc,previous);else vintedMutationGuards.delete(doc);}};
+}
+export function assertVintedMutationAllowed(doc){vintedMutationGuards.get(doc)?.assert();}
+export function clickVintedElement(el){
+  if(!el || typeof el.click!=='function')throw new Error('Élément Vinted absent ou incompatible.');
+  assertVintedMutationAllowed(el.ownerDocument);el.click();
+}
 export function setNativeValue(input,value) {
   if(!input || input.disabled || input.readOnly)throw new Error('Champ absent ou non modifiable.');
   const proto=input.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;
   const setter=Object.getOwnPropertyDescriptor(proto,'value')?.set;
   if(!setter)throw new Error('Type de champ non pris en charge.');
-  setter.call(input,String(value));input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.blur();
+  assertVintedMutationAllowed(input.ownerDocument);setter.call(input,String(value));
+  assertVintedMutationAllowed(input.ownerDocument);input.dispatchEvent(new Event('input',{bubbles:true}));
+  assertVintedMutationAllowed(input.ownerDocument);input.dispatchEvent(new Event('change',{bubbles:true}));
+  assertVintedMutationAllowed(input.ownerDocument);input.blur();
 }
 export function transferFiles(input,files) {
   if(!input || input.type!=='file' || input.disabled || (!input.multiple && files.length>1))throw new Error('Sélecteur photo absent ou incompatible.');
@@ -60,17 +75,20 @@ export function parseVintedPrice(raw) {
   if(!/^\d+(?:[.,]\d{1,2})?$/.test(text))throw new Error('Prix invalide : utilisez par exemple 10, 10.00, 10,00 ou 10 €.');
   return parseVintedPrice(Number(text.replace(',','.')));
 }
-export async function setVintedPrice(doc,raw) {
+export async function setVintedPrice(doc,raw,{replace=false}={}) {
   const amount=parseVintedPrice(raw); // validate before touching the DOM
+  assertVintedMutationAllowed(doc);
   const el=await waitFor(()=>{try{return uniqueField(doc,'price');}catch{return null;}},4500);
   const previous=el.value;
   const existing=(()=>{try{return parseVintedPrice(previous);}catch{return null;}})();
-  if(existing!==null && existing!==0 && existing!==amount)throw new Error('Le prix contient déjà une autre valeur ; aucun écrasement.');
-  el.focus();setNativeValue(el,amount.toFixed(2));
-  await waitFor(()=>{try{return parseVintedPrice(el.value)===amount;}catch{return false;}},4500);
-  // Allow a delayed formatting/controlled-state update, then check again.
-  await new Promise(r=>setTimeout(r,250));
-  if(parseVintedPrice(el.value)!==amount)throw new Error('Prix non conservé après formatage.');
+  if(!replace && existing!==null && existing!==0 && existing!==amount)throw new Error('Le prix contient déjà une autre valeur ; aucun écrasement.');
+  assertVintedMutationAllowed(doc);el.focus();setNativeValue(el,amount.toFixed(2));
+  // React may replace the input while formatting: only the current visible field counts.
+  await waitForStable(()=>{
+    assertVintedMutationAllowed(doc);
+    try{return parseVintedPrice(uniqueField(doc,'price').value)===amount;}catch{return false;}
+  },300,4500);
+  assertVintedMutationAllowed(doc);
   return `Prix vérifié : ${amount.toFixed(2)} €`;
 }
 const isVintedSelected=e=>{
@@ -130,13 +148,15 @@ function pickerTrigger(doc,id){
 }
 export async function selectVintedChoice(doc,id,value) {
   if(id==='condition')return selectVintedCondition(doc,value);
+  assertVintedMutationAllowed(doc);
   if(id==='category')clearVintedCategoryEvidence(doc);
   const path=parts(value);if(!path.length)throw new Error('Valeur manquante dans la fiche.');const target=path.at(-1);
   const trigger=await waitFor(()=>pickerTrigger(doc,id),4500);
+  assertVintedMutationAllowed(doc);
   const searchId=id==='category'?'catalog-search-input':`${id}-search-input`;
   const menuVisible=()=>visible(doc.getElementById(searchId)) || visible(popupFor(doc,trigger));
   if(fold(selectedText(trigger))===fold(target) && path.length===1 && trigger.getAttribute('aria-expanded')!=='true' && !menuVisible())return `Sélection vérifiée : ${target}`;
-  if(trigger.getAttribute('aria-expanded')!=='true' && !menuVisible())trigger.click();
+  if(trigger.getAttribute('aria-expanded')!=='true' && !menuVisible())clickVintedElement(trigger);
   try {
     const search=await waitFor(()=>{
       const exact=doc.getElementById(searchId);
@@ -155,11 +175,11 @@ export async function selectVintedChoice(doc,id,value) {
     const menuRoot=popupFor(doc,trigger,chosen.el);
     const closed=()=>visible(doc.getElementById(id)) && doc.getElementById(id)?.getAttribute('aria-expanded')!=='true' && fold(selectedText(doc.getElementById(id)))===fold(target) && !findChoice() && (!menuRoot || !menuRoot.isConnected || !visible(menuRoot)) && (!search || !visible(doc.getElementById(search.id)));
     // Selection belongs to the live component. A nested native checked flag alone is not enough.
-    if(!isVintedSelected(chosen.el))chosen.el.click();
+    if(!isVintedSelected(chosen.el))clickVintedElement(chosen.el);
     try{await waitFor(()=>isVintedSelected(findChoice()?.el)||closed(),500);}catch{
       const cell=findChoice()?.el;
       const radio=cell?.matches('input[type=radio]')?cell:cell?.querySelector('input[type=radio]');
-      if(radio && !radio.disabled)radio.click(); // only the same exact option, once
+      if(radio && !radio.disabled)clickVintedElement(radio); // only the same exact option, once
     }
     await waitFor(()=>isVintedSelected(findChoice()?.el)||closed(),3500);
     // Only exact confirmation labels; never Add/Publish/Save draft.
@@ -170,11 +190,12 @@ export async function selectVintedChoice(doc,id,value) {
       const buttons=[...scope.querySelectorAll('button')].filter(e=>visible(e) && e.getAttribute('aria-disabled')!=='true' && ['fait','listo','hecho','done'].includes(fold(e.textContent)));
       if(buttons.length===1)return {button:buttons[0]};return null;
     },4500);
-    if(confirm.button){if(!isVintedSelected(findChoice()?.el))throw new Error('Option non sélectionnée : confirmation annulée.');confirm.button.click();}
+    if(confirm.button){if(!isVintedSelected(findChoice()?.el))throw new Error('Option non sélectionnée : confirmation annulée.');clickVintedElement(confirm.button);}
     await waitForStable(closed,300);
+    assertVintedMutationAllowed(doc);
     if(id==='category' && path.length>1)vintedCategoryEvidence.set(doc,{path:categoryEvidencePath(value),leaf:fold(target)});
     return `Sélection vérifiée : ${chosen.title}${id==='category' && chosen.path.length?' ('+chosen.path.join(' > ')+')':''}`;
-  }catch(e){throw new Error(`${id} : ${errorMessage(e)}`);}
+  }catch(e){if(e?.name==='OrionPreparationStopped')throw e;throw new Error(`${id} : ${errorMessage(e)}`);}
 }
 export function vintedShippingSize(value){
   const aliases={petit:1,pequeno:1,small:1,moyen:2,mediano:2,medium:2,grand:3,grande:3,large:3};const size=aliases[fold(value)];
@@ -192,27 +213,28 @@ function shippingSelected(doc,size){
   return true;
 }
 export async function selectVintedShipping(doc,value) {
+  assertVintedMutationAllowed(doc);
   const size=vintedShippingSize(value);
   await waitFor(()=>{const cell=doc.getElementById(`package-size-${size}`);return visible(cell) && doc.getElementById(`package_type_selector_${size}`);},6000);
   for(let attempt=0;attempt<2;attempt++){
     if(!shippingSelected(doc,size)) {
       const cell=doc.getElementById(`package-size-${size}`),radio=doc.getElementById(`package_type_selector_${size}`);
       const label=[...cell.querySelectorAll('label')].find(l=>l.htmlFor===radio.id) || [...doc.querySelectorAll('label')].find(l=>l.htmlFor===radio.id);
-      const control=[cell,label,radio].find(visible);if(!control)throw new Error('Choix du colis non accessible.');control.click();
-      try{await waitFor(()=>shippingSelected(doc,size),600);}catch{const liveRadio=doc.getElementById(`package_type_selector_${size}`);if(liveRadio && !liveRadio.disabled)liveRadio.click();}
+      const control=[cell,label,radio].find(visible);if(!control)throw new Error('Choix du colis non accessible.');clickVintedElement(control);
+      try{await waitFor(()=>shippingSelected(doc,size),600);}catch{const liveRadio=doc.getElementById(`package_type_selector_${size}`);if(liveRadio && !liveRadio.disabled)clickVintedElement(liveRadio);}
     }
-    try{await waitForStable(()=>shippingSelected(doc,size),900,2200);return `Colis vérifié : ${value}`;}catch{if(attempt===1)throw new Error('Le colis demandé ne reste pas sélectionné. Vérifiez le format dans Vinted.');}
+    try{await waitForStable(()=>shippingSelected(doc,size),900,2200);assertVintedMutationAllowed(doc);return `Colis vérifié : ${value}`;}catch(e){if(e?.name==='OrionPreparationStopped')throw e;if(attempt===1)throw new Error('Le colis demandé ne reste pas sélectionné. Vérifiez le format dans Vinted.');}
   }
 }
-export async function applyVintedProduct(doc,product,report,{photos=true}={}) {
+export async function applyVintedProduct(doc,product,report,{photos=true,photoFiles}={}) {
   const hadContent=['title','description'].some(id=>String(doc.getElementById(id)?.value || '').trim());
-  const results={};const attempt=async(key,fn)=>{try{const message=await fn();results[key]=message || 'À vérifier dans Vinted';}catch(e){results[key]='Manuel : '+errorMessage(e);}report({...results});};
+  const results={};const attempt=async(key,fn)=>{assertVintedMutationAllowed(doc);try{const message=await fn();results[key]=message || 'À vérifier dans Vinted';}catch(e){if(e.name==='OrionPreparationStopped')throw e;results[key]='Manuel : '+errorMessage(e);}report({...results});};
   // Photos first: later category-dependent fields must follow native upload/loading updates.
   if(photos)await attempt('photos',async()=>{
     if(hadContent)throw new Error('Le formulaire contenait déjà du texte : ajout automatique de photos désactivé pour éviter les doublons.');
     const inputs=[...doc.querySelectorAll('input[type=file]')].filter(e=>!e.disabled && e.multiple);
     if(inputs.length!==1)throw new Error('Sélecteur photo absent ou ambigu.');
-    const files=await preparedFiles({photos:product.photos});transferFiles(inputs[0],files);
+    const files=photoFiles ?? await preparedFiles({photos:product.photos});assertVintedMutationAllowed(doc);transferFiles(inputs[0],files);
     await waitForStable(()=>![...doc.querySelectorAll('[role=progressbar],[aria-busy="true"]')].some(visible),900,15000);
     return 'Fichiers transmis au sélecteur ; téléversement à vérifier';
   });
